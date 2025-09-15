@@ -1,35 +1,36 @@
 const User = require("../models/userModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
-const { v4: uuidv4 } = require('uuid');
-const sharp = require('sharp');
-const fs = require('fs');
-const bcrybt = require('bcrypt');
+const { v4: uuidv4 } = require("uuid");
+const sharp = require("sharp");
+const fs = require("fs");
+const bcrypt = require("bcrypt");
+const Order = require("../models/orderModel");
+const { uploadSingleImage } = require("../midlewares/uploadImageMiddleWare");
+const { createToken }= require("../utils/createToken");
+const SubscriptionMemberShip = require("../models/SubscriptionMemberShip");
 
-
-const {uploadSingleImage} = require('../midlewares/uploadImageMiddleWare');
-const createToken = require("../utils/createToken");
-
-// Upload single image
+// 📸 Upload single image
 exports.uploadUserImage = uploadSingleImage('profileImg');
 
-// Image processing
+
 exports.resizeImage = asyncHandler(async (req, res, next) => {
   const filename = `user-${uuidv4()}-${Date.now()}.jpeg`;
 
   if (req.file) {
-
     const path = "uploads/users/";
-            if (!fs.existsSync(path)) {
-                fs.mkdirSync(path, { recursive: true });
-            }
-    await sharp(req.file.buffer)
-      .toFormat('jpeg')
-      .jpeg({ quality: 100 })
-      .toFile(`uploads/users/${filename}`);
+    if (!fs.existsSync(path)) {
+      fs.mkdirSync(path, { recursive: true });
+    }
 
-    // Save image into our db
-    req.body.profileImg = filename;
+    await sharp(req.file.buffer)
+      .toFormat("jpeg")
+      .jpeg({ quality: 100 })
+      .toFile(`${path}${filename}`);
+
+    // ✅ هنا هنستخدم الـ BASE_URL من .env
+    const fullUrl = `${process.env.BASE_URL}/uploads/users/${filename}`;
+    req.body.profileImg = fullUrl;
   }
 
   next();
@@ -38,8 +39,10 @@ exports.resizeImage = asyncHandler(async (req, res, next) => {
 
 
 
+// -------------------- Admin CRUD --------------------
 
-// Get all users
+// Get all users with membership details
+// Get all users (Admin only)
 exports.getUsers = asyncHandler(async (req, res) => {
   const page = req.query.page * 1 || 1;
   const limit = req.query.limit * 1 || 10;
@@ -49,13 +52,16 @@ exports.getUsers = asyncHandler(async (req, res) => {
     ? { userName: { $regex: req.query.search, $options: "i" } }
     : {};
 
-  // ✅ حساب العدد الإجمالي للمستخدمين بعد الفلترة
   const totalUsers = await User.countDocuments(searchQuery);
-
-  // ✅ حساب عدد الصفحات تلقائيًا
   const totalPages = Math.ceil(totalUsers / limit);
 
-  const users = await User.find(searchQuery).skip(skip).limit(limit);
+  // 👇 هنا هنحدد الحقول المسموح بيها فقط
+  const users = await User.find(searchQuery)
+    .select("userName email role profileImg phone createdAt")
+    .skip(skip)
+    .limit(limit)
+    .populate("membershipSubscription")
+;
 
   res.status(200).json({
     results: users.length,
@@ -64,12 +70,12 @@ exports.getUsers = asyncHandler(async (req, res) => {
     currentPage: page,
     hasNextPage: page < totalPages,
     hasPrevPage: page > 1,
-    data: users
+    data: users,
   });
 });
 
 
-// Create a new user
+// Create user
 exports.createUser = asyncHandler(async (req, res) => {
   const user = await User.create(req.body);
   user.password = undefined;
@@ -79,117 +85,297 @@ exports.createUser = asyncHandler(async (req, res) => {
 // Get user by ID
 exports.getUserById = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const user = await User.findById(id);
+
+  const user = await User.findById(id)
+    .select("userName email role profileImg phone createdAt")
+    .populate("membershipSubscription")
+
   if (!user) {
-    return next(new ApiError(`No user found for ID ${id}`, 404));
+    return next(new ApiError(`لا يوجد مستخدم بالـ ID ${id}`, 404));
   }
+
   res.status(200).json({ data: user });
 });
 
 // Update user
 exports.updateUser = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-
-  // استخدام findByIdAndUpdate لتحديث بيانات المستخدم
-  const updatedUser = await User.findByIdAndUpdate(
-    { _id: id },
-    req.body,  // البيانات الجديدة التي سيتم تحديثها
-    { new: true }  // العودة بالوثيقة المحدثة
-  );
-
-  // التحقق إذا كان المستخدم موجودًا
-  if (!updatedUser) {
-    return next(new ApiError(`No user found for ID ${id}`, 404));
-  }
-
-  // إرسال البيانات المحدثة في الاستجابة
+  const updatedUser = await User.findByIdAndUpdate({ _id: id }, req.body, {
+    new: true,
+  });
+  if (!updatedUser) return next(new ApiError(`No user found for ID ${id}`, 404));
   res.status(200).json({ data: updatedUser });
 });
-
-
-
-
-
 
 // Delete user
 exports.deleteUser = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const user = await User.findByIdAndDelete(id);
-
-  if (!user) {
-    return next(new ApiError(`No user found for ID ${id}`, 404));
-  }
+  if (!user) return next(new ApiError(`No user found for ID ${id}`, 404));
   res.status(200).json({ message: "User deleted successfully" });
 });
 
 
+// -------------------- Logged User --------------------
 
+// Get Logged user profile
+// Get Logged user profile (with all memberships)
+exports.getMyProfile = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user._id)
+    .populate("orders")
+    .populate("membershipSubscription");
 
-// @desc    Get Logged user data
-// @route   GET /api/v1/user/getMe
-// @access  Private/Protect
-exports.getLoggedUserAccount = asyncHandler (async(req, res, next) => {
-  req.params.id = req.user._id;
-  next();
-})
+  if (!user) return next(new ApiError("User not found", 404));
 
+  // هات كل العضويات الخاصة باليوزر ده
+  const memberships = await SubscriptionMemberShip.find({ user: req.user._id })
+    .populate("plan");
 
+  res.status(200).json({
+    data: {
+      ...user.toObject(),
+      memberships, // رجّع كل العضويات مش واحدة بس
+    },
+  });
+});
 
-// @desc    Update logged user password
-// @route   PUT /api/v1/users/updateMyPassword
-// @access  Private/Protect
-exports.updateLoggedUserPassword = asyncHandler(async (req, res, next) => {
-  // 1) Update user password based user payload (req.user._id)
+// Update logged user password
+exports.updateMyPassword = asyncHandler(async (req, res, next) => {
   const user = await User.findByIdAndUpdate(
     req.user._id,
     {
-      password: await bcrybt.hash(req.body.password, 12),
+      password: await bcrypt.hash(req.body.password, 12),
       passwordChangedAt: Date.now(),
     },
-    {
-      new: true,
-    }
+    { new: true }
   );
-
-  // 2) Generate token
   const token = createToken(user._id);
-
   res.status(200).json({ data: user, token });
 });
 
-
-
-// @desc    Update logged user data (without password, role)
-// @route   PUT /api/v1/users/updateMe
-// @access  Private/Protect
-exports.updateLoggedUserData = asyncHandler(async (req, res, next) => {
+// Update logged user profile (info only)
+exports.updateMyProfile = asyncHandler(async (req, res, next) => {
   const updatedUser = await User.findByIdAndUpdate(
     req.user._id,
     {
       userName: req.body.userName,
       email: req.body.email,
       phone: req.body.phone,
-      profileImg: req.body.profileImg
+      profileImg: req.body.profileImg,
+    },
+    { new: true }
+  );
+  res.status(200).json({ data: updatedUser });
+});
+
+// Delete my account
+exports.deleteMyAccount = asyncHandler(async (req, res, next) => {
+  const user = await User.findByIdAndDelete(req.user._id);
+  if (!user) return next(new ApiError("No user found for this account", 404));
+  res.status(200).json({ message: "Your account has been deleted" });
+});
+
+
+// -------------------- Profile Sub-sections --------------------
+
+// Add address
+exports.addAddress = asyncHandler(async (req, res) => {
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $push: { addresses: req.body } },
+    { new: true }
+  );
+  res.status(200).json({ data: user.addresses });
+});
+
+
+
+// PUT /api/v1/users/addresses/:addressId
+exports.updateAddress = asyncHandler(async (req, res, next) => {
+  const { addressId } = req.params;
+  const { label, details } = req.body; // اللي هيجي من البودي
+
+  const user = await User.findOneAndUpdate(
+    { _id: req.user._id, "addresses._id": addressId },
+    {
+      $set: {
+        "addresses.$.label": label,
+        "addresses.$.details": details,
+      },
     },
     { new: true }
   );
 
-  res.status(200).json({ data: updatedUser });
+  if (!user) return next(new ApiError("Address not found", 404));
+
+  res.status(200).json({ data: user.addresses });
+});
+
+ 
+
+// Remove address
+exports.removeAddress = asyncHandler(async (req, res) => {
+  const { addressId } = req.params;
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $pull: { addresses: { _id: addressId } } },
+    { new: true }
+  );
+  res.status(200).json({ message: "Your address has been deleted" , data: user.addresses });
+});
+
+// Add payment method
+exports.addPaymentMethod = asyncHandler(async (req, res) => {
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $push: { paymentMethods: req.body } },
+    { new: true }
+  );
+  res.status(200).json({ data: user.paymentMethods });
 });
 
 
-// @desc    Delete logged user account
-// @route   DELETE /api/v1/users/deleteMe
-// @access  Private/Protect
-exports.deleteLoggedUserAccount = asyncHandler(async (req, res, next) => {
-  const user = await User.findByIdAndDelete(req.user._id);
+// PUT /api/v1/users/payment-methods/:methodId
+exports.updatePaymentMethod = asyncHandler(async (req, res, next) => {
+  const { methodId } = req.params;
+  const { type, provider, last4 } = req.body; // ✅ خد البيانات من body
 
-  if (!user) {
-    return next(new ApiError(`No user found for this account`, 404));
-  }
+  const user = await User.findOneAndUpdate(
+    { _id: req.user._id, "paymentMethods._id": methodId },
+    {
+      $set: {
+        "paymentMethods.$.type": type,
+        "paymentMethods.$.provider": provider,
+        "paymentMethods.$.last4": last4,
+      },
+    },
+    { new: true, runValidators: true } // ✅ يرجع بعد التعديل ويتأكد من القيم
+  );
+
+  if (!user) return next(new ApiError("Payment method not found", 404));
 
   res.status(200).json({
-    status: 'success',
-    message: 'Your account has been deleted successfully',
+    status: "success",
+    data: user.paymentMethods,
   });
+});
+
+
+// Remove payment method
+exports.removePaymentMethod = asyncHandler(async (req, res) => {
+  const { methodId } = req.params;
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $pull: { paymentMethods: { _id: methodId } } },
+    { new: true }
+  );
+  res.status(200).json({ message: "Your payment info has been deleted", data: user.paymentMethods });
+});
+
+
+
+// -------------------- Membership --------------------
+
+// @desc    Get my membership details
+// @route   GET /api/v1/users/my-membership
+// @access  Private/User
+exports.getMyMembership = asyncHandler(async (req, res, next) => {
+  // هات كل العضويات الخاصة باليوزر الحالي
+  const memberships = await SubscriptionMemberShip.find({ user: req.user._id })
+    .populate("plan");
+
+  if (!memberships || memberships.length === 0) {
+    return next(new ApiError("No memberships found", 404));
+  }
+
+  // احسب usage لكل عضوية
+  const now = new Date();
+  const formattedMemberships = memberships.map((membership) => {
+    let usage = null;
+    if (membership.startDate && membership.expiresAt) {
+      const totalDuration =
+        membership.expiresAt.getTime() - membership.startDate.getTime();
+      const usedDuration = now.getTime() - membership.startDate.getTime();
+      usage = Math.min((usedDuration / totalDuration) * 100, 100);
+    }
+
+    return {
+      id: membership._id,
+      planName: membership.plan?.name,
+      planType: membership.plan?.type,
+      status: membership.status,
+      startDate: membership.startDate,
+      expiresAt: membership.expiresAt,
+      visitsUsed: membership.visitsUsed || 0,
+      points: membership.points || 0,
+      usagePercent: usage ? usage.toFixed(2) : null,
+    };
+  });
+
+  res.status(200).json({
+    status: "success",
+    results: formattedMemberships.length,
+    data: formattedMemberships,
+  });
+});
+
+
+
+
+
+// -------------------- Orders --------------------
+
+// Get logged user's orders
+exports.getMyOrders = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user._id).populate("orders");
+  if (!user) return next(new ApiError("User not found", 404));
+
+  res.status(200).json({
+    results: user.orders.length,
+    data: user.orders,
+  });
+});
+
+
+//-------------------------Logged Devices----------------------
+
+// GET /api/v1/users/my-devices
+exports.getMyDevices = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user._id).select("devices");
+  if (!user) return next(new ApiError("User not found", 404));
+
+  res.status(200).json({
+    results: user.devices.length,
+    data: user.devices,
+  });
+});
+
+// DELETE /api/v1/users/my-devices/:deviceId
+exports.logoutDevice = asyncHandler(async (req, res, next) => {
+  const { deviceId } = req.params;
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $pull: { devices: { deviceId } } },   // هنا بيشيل الجهاز اللي الـ id بتاعه اتبعت
+    { new: true }
+  );
+
+  if (!user) return next(new ApiError("User not found", 404));
+
+  res.status(200).json({ message: "Device logged out successfully" });
+});
+
+
+
+// DELETE /api/v1/users/my-devices
+exports.logoutAllDevices = asyncHandler(async (req, res, next) => {
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: { devices: [] } },
+    { new: true }
+  );
+
+  if (!user) return next(new ApiError("User not found", 404));
+
+  res.status(200).json({ message: "Logged out from all devices" });
 });

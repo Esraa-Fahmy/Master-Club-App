@@ -5,7 +5,9 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
-const createToken = require("../utils/createToken");
+const {createToken} = require("../utils/createToken");
+const { v4: uuidv4 } = require("uuid");
+
 
 // @desc    Signup
 // @route   GET /api/v1/auth/signup
@@ -25,24 +27,52 @@ exports.signup = asyncHandler(async (req, res, next) => {
 });
 
 // @desc    Login
-// @route   GET /api/v1/auth/login
+// @route   POST /api/v1/auth/login
 // @access  Public
 exports.login = asyncHandler(async (req, res, next) => {
-  // 1) check if password and email in the body (validation)
-  // 2) check if user exist & check if password is correct
-  const user = await User.findOne({ email: req.body.email }).select(
-    "+password"
-  );
+  const { email, password } = req.body;
 
-  if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
-    return next(new ApiError("Incorrect email or password", 401));
+  const user = await User.findOne({ email }).select("+password");
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return next(new ApiError("Invalid email or password", 401));
   }
-  // 3) generate token
-  user.password = undefined;
 
   const token = createToken(user._id);
-  res.status(201).json({ data: user, token });
+
+  // بيانات الجهاز من الهيدر
+  const userAgent = req.headers["user-agent"] || "unknown";
+  const ip = req.ip || req.connection.remoteAddress;
+
+  // نحدد مفتاح ثابت للجهاز
+  const deviceKey = `${userAgent}-${ip}`;
+
+  // نشوف هل الجهاز ده موجود قبل كده؟
+  const existingDevice = user.devices.find(
+    (d) => `${d.deviceType}-${d.ip}` === deviceKey
+  );
+
+  if (existingDevice) {
+    // لو موجود → نحدث بياناته
+    existingDevice.lastLogin = new Date();
+    existingDevice.token = token;
+  } else {
+    // لو مش موجود → نضيفه كجهاز جديد
+    user.devices.push({
+      deviceId: uuidv4(),
+      deviceType: userAgent,
+      os: userAgent,
+      ip,
+      lastLogin: new Date(),
+      token,
+    });
+  }
+
+  await user.save();
+
+  res.status(200).json({ token });
 });
+
+
 
 // @desc   make sure the user is logged in
 exports.protect = asyncHandler(async (req, res, next) => {
