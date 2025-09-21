@@ -23,6 +23,13 @@ const activitySchema = new mongoose.Schema(
       type: String,
     },
     availableDates: [Date],
+    allowedPlans: [
+  {
+    type: mongoose.Schema.ObjectId,
+    ref: "MembershipPlan", // خطة الاشتراك اللي تدي صلاحية الوصول
+  },
+],
+
   },
   { timestamps: true }
 );

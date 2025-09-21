@@ -5,7 +5,7 @@ const cors = require("cors");
 const compression = require("compression");
 const http = require("http");
 const dbConnection = require("./config/database");
-const ApiError = require("./utils/apiError");
+const ApiError = require("./utils/apiError"); 
 const globalError = require("./midlewares/errmiddleware");
 const { initSocket } = require("./utils/socket");
 

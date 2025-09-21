@@ -21,6 +21,13 @@ const facilitySchema = new mongoose.Schema(
     openingHours: {
       type: String, 
     },
+    allowedPlans: [
+  {
+    type: mongoose.Schema.ObjectId,
+    ref: "MembershipPlan", // خطة الاشتراك اللي تدي صلاحية الوصول
+  },
+],
+
   },
   { timestamps: true }
 );
