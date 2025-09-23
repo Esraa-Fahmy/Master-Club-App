@@ -74,6 +74,36 @@ exports.addNationalId = asyncHandler(async (req, res, next) => {
 });
 
 
+// GET /api/v1/membership-subscriptions/requests  (admin only)
+exports.getAllSubscriptionRequests = asyncHandler(async (req, res, next) => {
+  const filter = {};
+
+  // ✅ فلترة اختيارية بالحالة (pending_id_verification, rejected, ...)
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
+
+  const requests = await MembershipSubscription.find(filter)
+    .populate("user", "userName email phone")   // تفاصيل المستخدم
+    .populate("plan", "name price permissions") // تفاصيل الخطة
+    .sort({ createdAt: -1 });
+
+  res.status(200).json({
+    status: "success",
+    results: requests.length,
+    data: requests.map(reqDoc => ({
+      id: reqDoc._id,
+      status: reqDoc.status,
+      createdAt: reqDoc.createdAt,
+      nationalId: reqDoc.nationalId,   // ✅ اهو هنا
+      user: reqDoc.user,
+      plan: reqDoc.plan,
+    })),
+  });
+});
+
+
+
 exports.approveSubscription = asyncHandler(async (req, res, next) => {
   const sub = await MembershipSubscription.findById(req.params.id).populate("plan user");
   if (!sub) return next(new ApiError("Subscription not found", 404));
@@ -82,61 +112,146 @@ exports.approveSubscription = asyncHandler(async (req, res, next) => {
     return next(new ApiError("Not awaiting ID verification", 400));
   }
 
-  sub.status = "awaiting_confirmation";
-  sub.confirmationExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  sub.status = "awaiting_confirmation"; // خلاص مش هيكون فيه تايمر
   await sub.save();
 
-  // 🔔 Notification
+  // 🔔 إخطار اليوزر
   await sendNotification(
     sub.user._id,
     "اشتراكك قيد التأكيد",
-    `تمت الموافقة على طلب اشتراكك في خطة ${sub.plan.name}. برجاء التأكيد خلال 15 دقيقة.`,
+    `تمت الموافقة على طلب اشتراكك في خطة ${sub.plan.name}. برجاء التأكيد لتفعيل الاشتراك.`,
     "membership"
   );
 
   res.status(200).json({
     status: "success",
-    message: "Approved. User must confirm within 15 minutes.",
+    message: "Approved. User must confirm.",
     data: sub,
   });
 });
 
-// PUT /api/v1/membership-subscriptions/:id/confirm  (user)
+// PUT /api/v1/membership-subscriptions/:id/reject
+exports.rejectSubscription = asyncHandler(async (req, res, next) => {
+  const { reason } = req.body; // السبب اختياري
+  const sub = await MembershipSubscription.findById(req.params.id).populate("plan user");
+  if (!sub) return next(new ApiError("Subscription not found", 404));
+
+  if (sub.status !== "pending_id_verification") {
+    return next(new ApiError("Not awaiting ID verification", 400));
+  }
+
+  sub.status = "rejected";
+  sub.rejectionReason = reason || "لم يتم قبول البطاقة الوطنية.";
+  sub.rejectedAt = new Date();
+  await sub.save();
+
+  // 🔔 إخطار اليوزر
+  await sendNotification(
+    sub.user._id,
+    "تم رفض طلب الاشتراك",
+    `تم رفض البطاقة الوطنية لطلب اشتراكك في خطة ${sub.plan.name}. السبب: ${sub.rejectionReason}`,
+    "membership"
+  );
+
+  res.status(200).json({
+    status: "success",
+    message: "Subscription rejected",
+    data: sub,
+  });
+});
+
+
+
+// GET /api/v1/membership-subscriptions/:id/status
+exports.checkNationalIdStatus = asyncHandler(async (req, res, next) => {
+  const sub = await MembershipSubscription.findById(req.params.id).populate("plan");
+  if (!sub) return next(new ApiError("Subscription not found", 404));
+  if (sub.user.toString() !== req.user._id.toString())
+    return next(new ApiError("Not authorized", 403));
+
+  let responseData = {
+    subscriptionStatus: sub.status,
+    requestedAt: sub.createdAt,
+  };
+
+  switch (sub.status) {
+    case "pending_id_verification":
+      responseData.message = "في انتظار مراجعة الأدمن للبطاقة.";
+      break;
+
+    case "awaiting_confirmation":
+      responseData.message = "تمت الموافقة على البطاقة. برجاء التأكيد لتفعيل الاشتراك.";
+      responseData.membershipPlan = {
+        name: sub.plan?.name,
+        price: sub.plan?.price,
+        permissions: sub.plan?.permissions || [],
+      };
+      break;
+
+    case "rejected":
+      responseData.message = "تم رفض البطاقة الوطنية من قبل الأدمن.";
+      responseData.rejectedAt = sub.rejectedAt;
+      responseData.rejectionReason = sub.rejectionReason;
+      break;
+
+    case "active":
+      responseData.message = "الاشتراك مفعل بالفعل.";
+      responseData.membershipPlan = {
+        name: sub.plan?.name,
+        price: sub.plan?.price,
+        permissions: sub.plan?.permissions || [],
+      };
+      break;
+
+    default:
+      responseData.message = `الحالة الحالية: ${sub.status}`;
+  }
+
+  res.status(200).json({
+    status: "success",
+    data: responseData,
+  });
+});
+
+
+
+
+// PUT /api/v1/membership-subscriptions/:id/confirm
 exports.confirmSubscription = asyncHandler(async (req, res, next) => {
   const sub = await MembershipSubscription.findById(req.params.id).populate("plan");
   if (!sub) return next(new ApiError("Subscription not found", 404));
+  if (sub.user.toString() !== req.user._id.toString())
+    return next(new ApiError("Not authorized", 403));
 
   if (sub.status !== "awaiting_confirmation") {
     return next(new ApiError("Not awaiting confirmation", 400));
   }
 
-  if (!sub.confirmationExpiresAt || Date.now() > new Date(sub.confirmationExpiresAt).getTime()) {
-    sub.status = "expired";
-    await sub.save();
-    return next(new ApiError("Confirmation time expired", 400));
-  }
-
+  // 👇 شيلنا التايمر خلاص
   const now = new Date();
   const durationDays = sub.plan?.durationDays || 30;
   sub.startDate = now;
   sub.expiresAt = addDays(now, durationDays);
 
+  // توليد QR
   const qrToken = createQrToken(sub._id.toString());
   sub.qrCode = await generateQr(qrToken);
   sub.qrCodeExpiresAt = new Date(Date.now() + 2 * 60 * 1000);
   sub.status = "active";
   await sub.save();
 
-
   await sendNotification(
-  sub.user._id,
-  "تم تفعيل اشتراكك",
-  `تم تفعيل خطة ${sub.plan.name} بنجاح وصالحة حتى ${sub.expiresAt.toLocaleDateString()}.`,
-  "membership"
-);
+    sub.user._id,
+    "تم تفعيل اشتراكك",
+    `تم تفعيل خطة ${sub.plan.name} بنجاح وصالحة حتى ${sub.expiresAt.toLocaleDateString()}.`,
+    "membership"
+  );
 
   res.status(200).json({ status: "success", message: "Activated", data: sub });
 });
+
+
+
 
 // GET /api/v1/membership-subscriptions/my-qr
 exports.getMyQr = asyncHandler(async (req, res, next) => {

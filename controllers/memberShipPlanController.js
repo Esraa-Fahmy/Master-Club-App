@@ -10,20 +10,38 @@ exports.createPlan = asyncHandler(async (req, res) => {
   res.status(201).json({ status: "success", data: plan });
 });
 
-// @desc Get all plans
+// @desc Get all plans (lightweight)
 // @route GET /api/v1/membership-plans
 // @access Public
 exports.getPlans = asyncHandler(async (req, res) => {
-  const plans = await MembershipPlan.find();
-  res.status(200).json({ status: "success", results: plans.length, data: plans });
+  const plans = await MembershipPlan.find({}, "name description permissions"); 
+  // 👆 بيجيب بس الفيلدز دي
+
+  res.status(200).json({
+    status: "success",
+    results: plans.length,
+    data: plans,
+  });
 });
 
-// @desc Get single plan
+
+// @desc Get single plan with full details
 // @route GET /api/v1/membership-plans/:id
+// @access Public
 exports.getPlan = asyncHandler(async (req, res, next) => {
   const plan = await MembershipPlan.findById(req.params.id);
   if (!plan) return next(new ApiError("Plan not found", 404));
-  res.status(200).json({ status: "success", data: plan });
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      ...plan.toObject(),
+      enums: {
+        name: ["general", "vip"],
+        type: ["monthly", "yearly"],
+      },
+    },
+  });
 });
 
 // @desc Update plan
