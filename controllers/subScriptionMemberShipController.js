@@ -52,26 +52,46 @@ exports.subscribe = asyncHandler(async (req, res, next) => {
 // PUT /api/v1/membership-subscriptions/:id/national-id
 exports.addNationalId = asyncHandler(async (req, res, next) => {
   const { nationalId } = req.body;
-  if (!nationalId) return next(new ApiError("National ID is required", 400));
+  const subscriptionId = req.params.id;
 
-  const sub = await MembershipSubscription.findById(req.params.id);
-  if (!sub) return next(new ApiError("Subscription not found", 404));
-  if (sub.user.toString() !== req.user._id.toString())
-    return next(new ApiError("Not authorized", 403));
-
-  if (sub.status !== "pending_id_verification") {
-    return next(new ApiError("Wrong state for adding ID", 400));
+  if (!nationalId) {
+    return next(new ApiError("National ID is required", 400));
   }
 
-  sub.nationalId = nationalId;
-  await sub.save();
+  // هات الاشتراك اللي عايز يضيف عليه البطاقة
+  const subscription = await MembershipSubscription.findById(subscriptionId).populate("plan");
+  if (!subscription) return next(new ApiError("Subscription not found", 404));
+
+  // لو الخطة مش VIP يبقى مش محتاج nationalId
+  if (subscription.plan.name !== "vip") {
+    return next(new ApiError("National ID is only required for VIP subscriptions", 400));
+  }
+
+  // 🔍 شوف هل البطاقة مستخدمة في اشتراك VIP تاني active أو pending
+  const existing = await MembershipSubscription.findOne({
+    nationalId,
+    _id: { $ne: subscriptionId }, // استبعد الاشتراك الحالي
+    status: { $in: ["pending_id_verification", "awaiting_confirmation", "active"] },
+  });
+
+  if (existing) {
+    return next(
+      new ApiError("This National ID is already linked to another active or pending VIP subscription", 400)
+    );
+  }
+
+  // ✅ لو البطاقة فاضية → احفظها وخلي الحالة pending_id_verification
+  subscription.nationalId = nationalId;
+  subscription.status = "pending_id_verification";
+  await subscription.save();
 
   res.status(200).json({
     status: "success",
-    message: "National ID saved. Await admin approval.",
-    data: sub,
+    message: "National ID added successfully. Awaiting admin review.",
+    data: subscription,
   });
 });
+
 
 
 // GET /api/v1/membership-subscriptions/requests  (admin only)
