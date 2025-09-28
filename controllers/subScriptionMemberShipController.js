@@ -17,22 +17,25 @@ exports.subscribe = asyncHandler(async (req, res, next) => {
   const plan = await MembershipPlan.findById(planId);
   if (!plan) return next(new ApiError("Plan not found", 404));
 
+  const now = new Date();
+  const durationDays = plan.durationDays || 30;
+
   if (plan.name === "vip") {
-    const subscription = await MembershipSubscription.create({
+    // VIP → مجرد طلب، subscriptionId وQR ما بيتولدش لحد موافقة الأدمن
+    const subscriptionRequest = {
       user: req.user._id,
       plan: plan._id,
       status: "pending_id_verification",
-    });
+    };
 
     return res.status(201).json({
       status: "success",
-      message: "VIP subscription created. Please submit your national ID.",
-      data: subscription,
+      message: "VIP subscription request created. Awaiting admin approval.",
+      data: subscriptionRequest,
     });
   }
 
-  const now = new Date();
-  const durationDays = plan.durationDays || 30;
+  // العادي → إنشاء subscription مباشر
   const subscription = await MembershipSubscription.create({
     user: req.user._id,
     plan: plan._id,
@@ -41,12 +44,17 @@ exports.subscribe = asyncHandler(async (req, res, next) => {
     expiresAt: addDays(now, durationDays),
   });
 
+  // توليد QR
   const qrToken = createQrToken(subscription._id.toString());
   subscription.qrCode = await generateQr(qrToken);
   subscription.qrCodeExpiresAt = new Date(Date.now() + 2 * 60 * 1000);
   await subscription.save();
 
-  res.status(201).json({ status: "success", data: subscription });
+  res.status(201).json({
+    status: "success",
+    message: "Subscription created successfully",
+    data: subscription,
+  });
 });
 
 // PUT /api/v1/membership-subscriptions/:id/national-id
@@ -54,33 +62,25 @@ exports.addNationalId = asyncHandler(async (req, res, next) => {
   const { nationalId } = req.body;
   const subscriptionId = req.params.id;
 
-  if (!nationalId) {
-    return next(new ApiError("National ID is required", 400));
-  }
+  if (!nationalId) return next(new ApiError("National ID is required", 400));
 
-  // هات الاشتراك اللي عايز يضيف عليه البطاقة
   const subscription = await MembershipSubscription.findById(subscriptionId).populate("plan");
   if (!subscription) return next(new ApiError("Subscription not found", 404));
 
-  // لو الخطة مش VIP يبقى مش محتاج nationalId
   if (subscription.plan.name !== "vip") {
     return next(new ApiError("National ID is only required for VIP subscriptions", 400));
   }
 
-  // 🔍 شوف هل البطاقة مستخدمة في اشتراك VIP تاني active أو pending
   const existing = await MembershipSubscription.findOne({
     nationalId,
-    _id: { $ne: subscriptionId }, // استبعد الاشتراك الحالي
+    _id: { $ne: subscriptionId },
     status: { $in: ["pending_id_verification", "awaiting_confirmation", "active"] },
   });
 
   if (existing) {
-    return next(
-      new ApiError("This National ID is already linked to another active or pending VIP subscription", 400)
-    );
+    return next(new ApiError("This National ID is already linked to another active or pending VIP subscription", 400));
   }
 
-  // ✅ لو البطاقة فاضية → احفظها وخلي الحالة pending_id_verification
   subscription.nationalId = nationalId;
   subscription.status = "pending_id_verification";
   await subscription.save();
@@ -92,20 +92,14 @@ exports.addNationalId = asyncHandler(async (req, res, next) => {
   });
 });
 
-
-
-// GET /api/v1/membership-subscriptions/requests  (admin only)
+// GET /api/v1/membership-subscriptions/requests (admin only)
 exports.getAllSubscriptionRequests = asyncHandler(async (req, res, next) => {
   const filter = {};
-
-  // ✅ فلترة اختيارية بالحالة (pending_id_verification, rejected, ...)
-  if (req.query.status) {
-    filter.status = req.query.status;
-  }
+  if (req.query.status) filter.status = req.query.status;
 
   const requests = await MembershipSubscription.find(filter)
-    .populate("user", "userName email phone")   // تفاصيل المستخدم
-    .populate("plan", "name price permissions") // تفاصيل الخطة
+    .populate("user", "userName email phone")
+    .populate("plan", "name price permissions")
     .sort({ createdAt: -1 });
 
   res.status(200).json({
@@ -115,27 +109,22 @@ exports.getAllSubscriptionRequests = asyncHandler(async (req, res, next) => {
       id: reqDoc._id,
       status: reqDoc.status,
       createdAt: reqDoc.createdAt,
-      nationalId: reqDoc.nationalId,   // ✅ اهو هنا
+      nationalId: reqDoc.nationalId,
       user: reqDoc.user,
       plan: reqDoc.plan,
     })),
   });
 });
 
-
-
+// PUT /api/v1/membership-subscriptions/:id/approve (admin approves VIP)
 exports.approveSubscription = asyncHandler(async (req, res, next) => {
   const sub = await MembershipSubscription.findById(req.params.id).populate("plan user");
   if (!sub) return next(new ApiError("Subscription not found", 404));
+  if (sub.status !== "pending_id_verification") return next(new ApiError("Not awaiting ID verification", 400));
 
-  if (sub.status !== "pending_id_verification") {
-    return next(new ApiError("Not awaiting ID verification", 400));
-  }
-
-  sub.status = "awaiting_confirmation"; // خلاص مش هيكون فيه تايمر
+  sub.status = "awaiting_confirmation"; // انتظار تأكيد المستخدم
   await sub.save();
 
-  // 🔔 إخطار اليوزر
   await sendNotification(
     sub.user._id,
     "اشتراكك قيد التأكيد",
@@ -148,6 +137,35 @@ exports.approveSubscription = asyncHandler(async (req, res, next) => {
     message: "Approved. User must confirm.",
     data: sub,
   });
+});
+
+// PUT /api/v1/membership-subscriptions/:id/confirm (user confirms VIP subscription)
+exports.confirmSubscription = asyncHandler(async (req, res, next) => {
+  const sub = await MembershipSubscription.findById(req.params.id).populate("plan");
+  if (!sub) return next(new ApiError("Subscription not found", 404));
+  if (sub.user.toString() !== req.user._id.toString()) return next(new ApiError("Not authorized", 403));
+  if (sub.status !== "awaiting_confirmation") return next(new ApiError("Not awaiting confirmation", 400));
+
+  const now = new Date();
+  const durationDays = sub.plan?.durationDays || 30;
+
+  // إنشاء subscriptionId حقيقي وتوليد QR
+  sub.startDate = now;
+  sub.expiresAt = addDays(now, durationDays);
+  const qrToken = createQrToken(sub._id.toString());
+  sub.qrCode = await generateQr(qrToken);
+  sub.qrCodeExpiresAt = new Date(Date.now() + 2 * 60 * 1000);
+  sub.status = "active";
+  await sub.save();
+
+  await sendNotification(
+    sub.user._id,
+    "تم تفعيل اشتراكك",
+    `تم تفعيل خطة ${sub.plan.name} بنجاح وصالحة حتى ${sub.expiresAt.toLocaleDateString()}.`,
+    "membership"
+  );
+
+  res.status(200).json({ status: "success", message: "Activated", data: sub });
 });
 
 // PUT /api/v1/membership-subscriptions/:id/reject
