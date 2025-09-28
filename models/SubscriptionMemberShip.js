@@ -1,8 +1,23 @@
 // models/membershipSubscriptionModel.js
 const mongoose = require("mongoose");
 
+
+
+
+function generateSubscriptionId() {
+  const prefix = "AH";
+  const random = Math.floor(100 + Math.random() * 900); // 3 digits
+  return `${prefix}-${random}`;
+}
+
 const membershipSubscriptionSchema = new mongoose.Schema(
   {
+    subscriptionId: {
+      type: String,
+      unique: true,
+      required: true,
+      default: generateSubscriptionId,
+    },
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -43,6 +58,9 @@ const membershipSubscriptionSchema = new mongoose.Schema(
     // audit
     lastAccessAt: Date,
     accessGranted: { type: Boolean, default: false },
+    rejectionReason: { type: String },
+rejectedAt: { type: Date },
+
 
     // usage & points
     visitsUsed: { type: Number, default: 0 },

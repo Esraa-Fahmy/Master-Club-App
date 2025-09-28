@@ -301,14 +301,17 @@ exports.getMyMembership = asyncHandler(async (req, res, next) => {
 
     return {
       id: membership._id,
+      subscriptionId: membership.subscriptionId, // ✅ ID المميز زي AH-245
       planName: membership.plan?.name,
       planType: membership.plan?.type,
       status: membership.status,
       startDate: membership.startDate,
       expiresAt: membership.expiresAt,
+      createdAt: membership.createdAt, // ✅ تاريخ الاشتراك نفسه
       visitsUsed: membership.visitsUsed || 0,
       points: membership.points || 0,
       usagePercent: usage ? usage.toFixed(2) : null,
+      rejectionReason: membership.rejectionReason || null, // لو مرفوض
     };
   });
 

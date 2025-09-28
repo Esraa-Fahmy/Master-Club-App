@@ -10,10 +10,10 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ["user", "admin"], default: "user" },
     profileImg: String,
 
-    membershipSubscription: {
+    membershipSubscription: [{
       type: mongoose.Schema.ObjectId,
       ref: "MembershipSubscription",
-    },
+    }],
 
     // 🏠 Saved Addresses
     addresses: [

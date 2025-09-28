@@ -14,12 +14,17 @@ exports.createPlan = asyncHandler(async (req, res) => {
 // @route GET /api/v1/membership-plans
 // @access Public
 exports.getPlans = asyncHandler(async (req, res) => {
-  const plans = await MembershipPlan.find({}, "name description permissions"); 
-  // 👆 بيجيب بس الفيلدز دي
+  const plans = await MembershipPlan.find({}, "name description permissions");
+
+  // ⬅️ نجيب قيم enum المسموح بيها من الاسكيمة
+  const nameEnumValues = MembershipPlan.schema.path("name").enumValues;
 
   res.status(200).json({
     status: "success",
     results: plans.length,
+    enums: {
+      name: nameEnumValues, // ["general", "vip"]
+    },
     data: plans,
   });
 });
