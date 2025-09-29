@@ -1,6 +1,8 @@
+// controllers/bookingController.js
 const Booking = require("../models/bookingModel");
 const Activity = require("../models/activityModel");
 const Facility = require("../models/facilityModel");
+const SubscriptionMemberShip = require("../models/SubscriptionMemberShip");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
 const { sendNotification } = require("../utils/notifyUser");
@@ -28,9 +30,10 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
 
   // Check user's active membership plan
   let userPlanId = null;
-  const activeSub = await require("../models/SubscriptionMemberShip")
-    .findOne({ user: req.user._id, status: "active" })
-    .populate("plan");
+  const activeSub = await SubscriptionMemberShip.findOne({
+    user: req.user._id,
+    status: "active",
+  }).populate("plan");
   if (activeSub) userPlanId = activeSub.plan._id.toString();
 
   if (item.allowedPlans && item.allowedPlans.length > 0) {
@@ -117,14 +120,72 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
   res.status(201).json({ status: "success", data: booking });
 });
 
+
 // GET /bookings/my
-exports.getMyBookings = asyncHandler(async (req, res) => {
+exports.getMyBookings = asyncHandler(async (req, res, next) => {
   const bookings = await Booking.find({ user: req.user._id })
     .populate("activity")
     .populate("facility")
     .sort({ createdAt: -1 });
-  res.status(200).json({ results: bookings.length, data: bookings });
+
+  if (!bookings || bookings.length === 0) {
+    return next(new ApiError("No bookings found", 404));
+  }
+
+  const now = new Date();
+
+  const formattedBookings = await Promise.all(
+    bookings.map(async (b) => {
+      // جِب تفاصيل العضوية بتاعة اليوزر لو موجودة
+      const sub = await SubscriptionMemberShip.findOne({
+        user: req.user._id,
+        status: "active",
+      }).populate("plan");
+
+      let usage = null;
+      if (sub?.startDate && sub?.expiresAt) {
+        const totalDuration =
+          sub.expiresAt.getTime() - sub.startDate.getTime();
+        const usedDuration = now.getTime() - sub.startDate.getTime();
+        usage = Math.min((usedDuration / totalDuration) * 100, 100);
+      }
+
+      return {
+        id: b._id,
+        type: b.activity ? "activity" : "facility", // ✅ نوع الحجز
+        title: b.activity ? b.activity.title : b.facility?.name, // ✅ اسم النشاط/المرفق
+        image: b.activity ? b.activity.image : b.facility?.image, // ✅ صورة
+        date: b.date,
+        time: b.timeSlot,
+        status: b.status,
+        guests: b.guests,
+        specialRequest: b.specialRequest || null,
+        price: b.price,
+        createdAt: b.createdAt,
+        // عضوية
+        membership: sub
+          ? {
+              subscriptionId: sub.subscriptionId,
+              planName: sub.plan?.name,
+              planType: sub.plan?.type,
+              startDate: sub.startDate,
+              expiresAt: sub.expiresAt,
+              points: sub.points || 0,
+              usagePercent: usage ? usage.toFixed(2) : null,
+            }
+          : null,
+      };
+    })
+  );
+
+  res.status(200).json({
+    status: "success",
+    results: formattedBookings.length,
+    data: formattedBookings,
+  });
 });
+
+
 
 // PUT /bookings/:id/cancel
 exports.cancelBooking = asyncHandler(async (req, res, next) => {
@@ -161,7 +222,11 @@ exports.getAllBookings = asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.status) filter.status = req.query.status;
   const bookings = await Booking.find(filter)
-    .populate("user activity facility")
+    .populate("user activity")
+    .populate({
+      path: "facility",
+      populate: { path: "category", select: "name type allowedPlans" },
+    })
     .sort({ createdAt: -1 });
   res.status(200).json({ results: bookings.length, data: bookings });
 });
@@ -170,7 +235,8 @@ exports.getAllBookings = asyncHandler(async (req, res) => {
 exports.approveBooking = asyncHandler(async (req, res, next) => {
   const booking = await Booking.findById(req.params.id).populate("user activity facility");
   if (!booking) return next(new ApiError("Booking not found", 404));
-  if (booking.status !== "pending") return next(new ApiError("Booking not pending", 400));
+  if (booking.status !== "pending")
+    return next(new ApiError("Booking not pending", 400));
 
   booking.status = "confirmed";
   await booking.save();
@@ -180,21 +246,23 @@ exports.approveBooking = asyncHandler(async (req, res, next) => {
   if (user) {
     user.recentActivities = user.recentActivities || [];
     user.recentActivities.unshift({
-      activity: booking.activity ? booking.activity.title : booking.facility.name,
+      activity: booking.activity ? booking.activity.title : booking.facility?.name,
+      type: booking.activity ? "activity" : "facility",
       date: new Date(booking.date),
-      durationMinutes: 60,
+      durationMinutes: booking.activity?.duration || 60,
     });
-    if (user.recentActivities.length > 50)
+    if (user.recentActivities.length > 50) {
       user.recentActivities = user.recentActivities.slice(0, 50);
+    }
     await user.save();
   }
 
   await sendNotification(
     booking.user._id,
     "تم قبول طلب الحجز",
-    `تم قبول طلب الحجز ${booking.activity ? booking.activity.title : booking.facility.name} بتاريخ ${new Date(
-      booking.date
-    ).toLocaleDateString()} ${booking.timeSlot || ""}`,
+    `تم قبول طلب الحجز ${
+      booking.activity ? booking.activity.title : booking.facility?.name
+    } بتاريخ ${new Date(booking.date).toLocaleDateString()} ${booking.timeSlot || ""}`,
     "system"
   );
 
@@ -205,7 +273,8 @@ exports.approveBooking = asyncHandler(async (req, res, next) => {
 exports.rejectBooking = asyncHandler(async (req, res, next) => {
   const booking = await Booking.findById(req.params.id).populate("user activity facility");
   if (!booking) return next(new ApiError("Booking not found", 404));
-  if (booking.status !== "pending") return next(new ApiError("Booking not pending", 400));
+  if (booking.status !== "pending")
+    return next(new ApiError("Booking not pending", 400));
 
   booking.status = "cancelled";
   await booking.save();
@@ -213,11 +282,64 @@ exports.rejectBooking = asyncHandler(async (req, res, next) => {
   await sendNotification(
     booking.user._id,
     "تم رفض طلب الحجز",
-    `تم رفض طلب الحجز ${booking.activity ? booking.activity.title : booking.facility.name} بتاريخ ${new Date(
-      booking.date
-    ).toLocaleDateString()}.`,
+    `تم رفض طلب الحجز ${
+      booking.activity ? booking.activity.title : booking.facility?.name
+    } بتاريخ ${new Date(booking.date).toLocaleDateString()}.`,
     "system"
   );
+
+  res.status(200).json({ status: "success", data: booking });
+});
+
+// PUT /bookings/:id/complete
+exports.completeBooking = asyncHandler(async (req, res, next) => {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) return next(new ApiError("Booking not found", 404));
+  if (booking.status !== "confirmed")
+    return next(new ApiError("Only confirmed bookings can be completed", 400));
+
+  booking.status = "completed";
+  await booking.save();
+
+  // Update membership visits/points
+  const activeSub = await SubscriptionMemberShip.findOne({
+    user: booking.user,
+    status: "active",
+  });
+  if (activeSub) {
+    activeSub.visitsUsed = (activeSub.visitsUsed || 0) + 1;
+    activeSub.points = (activeSub.points || 0) + (booking.pointsEarned || 10); // default points
+    await activeSub.save();
+  }
+
+  await sendNotification(
+    booking.user,
+    "تم إنهاء الحجز",
+    `تم إنهاء الحجز الخاص بك بتاريخ ${new Date(booking.date).toLocaleDateString()}.`,
+    "system"
+  );
+
+  res.status(200).json({ status: "success", data: booking });
+});
+
+// PUT /bookings/:id/pay
+exports.payBooking = asyncHandler(async (req, res, next) => {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) return next(new ApiError("Booking not found", 404));
+
+  booking.paymentStatus = "paid";
+  await booking.save();
+
+  res.status(200).json({ status: "success", data: booking });
+});
+
+// PUT /bookings/:id/refund
+exports.refundBooking = asyncHandler(async (req, res, next) => {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) return next(new ApiError("Booking not found", 404));
+
+  booking.paymentStatus = "refunded";
+  await booking.save();
 
   res.status(200).json({ status: "success", data: booking });
 });

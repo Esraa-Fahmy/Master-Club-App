@@ -52,6 +52,8 @@ const userSchema = new mongoose.Schema(
     recentActivities: [
       {
         activity: String,
+       type: { type: String, enum: ["activity", "facility"] }, // 👈 جديد
+
         date: Date,
         durationMinutes: Number,
       }

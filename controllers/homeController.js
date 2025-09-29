@@ -1,16 +1,15 @@
 const Activity = require("../models/activityModel");
 const Facility = require("../models/facilityModel");
 const Category = require("../models/categoryModel");
-const SubscriptionMemberShip = require("../models/SubscriptionMemberShip");
 const asyncHandler = require("express-async-handler");
+const User = require("../models/userModel")
 
 // GET /home
-// Aggregrate featured activities, facilities grouped by category, user recent activities (if logged)
 exports.getHomeData = asyncHandler(async (req, res) => {
-  // featured activities (top priced or upcoming)
+  // Featured activities
   const featured = await Activity.find().sort({ createdAt: -1 }).limit(6).populate("category");
 
-  // facilities grouped by category (for quick UI)
+  // Facilities grouped by category
   const categories = await Category.find();
   const facilitiesByCategory = {};
   for (const cat of categories) {
@@ -21,30 +20,38 @@ exports.getHomeData = asyncHandler(async (req, res) => {
     };
   }
 
-  // upcoming vip events: VIP activities that admin might mark with availableDates in the future
+  // VIP Events upcoming
   const now = new Date();
-  const vipEvents = await Activity.find({}).populate("category");
-  const filteredVipEvents = vipEvents.filter(a => a.category && a.category.type === "activity"); // frontend to decide vip tag
+  const vipEvents = await Activity.find({
+    isEvent: true,
+    isVip: true,
+    endDate: { $gte: now }
+  }).populate("category");
 
-  // recent activities for logged user
+  // Recent activities
   let recentActivities = [];
   if (req.user) {
-    const user = await require("../models/userModel").findById(req.user._id).select("recentActivities");
+    const user = await User.findById(req.user._id)
+      .select("recentActivities");
     recentActivities = user?.recentActivities || [];
   }
 
   res.status(200).json({
     featured,
     facilitiesByCategory,
-    vipEvents: filteredVipEvents.slice(0, 6),
+    vipEvents,
     recentActivities,
   });
 });
 
-// GET /home/vip-events  (optionally paginated)
+// GET /home/vip-events
 exports.getVipEvents = asyncHandler(async (req, res) => {
-  // define VIP activities: could be by plan or by a flag (here we use activity.category or activity.price>0 etc)
-  const events = await Activity.find({}).populate("category");
-  // filter logic if you set a flag later
+  const now = new Date();
+  const events = await Activity.find({
+    isEvent: true,
+    isVip: true,
+    endDate: { $gte: now }
+  }).populate("category");
+
   res.status(200).json({ results: events.length, data: events });
 });

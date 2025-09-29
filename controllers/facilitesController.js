@@ -1,6 +1,7 @@
 const Facility = require("../models/facilityModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
+const SubscripeMembership = require("../models/SubscriptionMemberShip")
 
 // GET /facilities
 // supports query ?category=ID & ?search=term
@@ -9,11 +10,11 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   if (req.query.category) filter.category = req.query.category;
   if (req.query.search) filter.name = { $regex: req.query.search, $options: "i" };
 
-  let facilities = await Facility.find(filter).populate("category allowedPlans");
+  let facilities = await Facility.find(filter).populate("category", "name type allowedPlans");
 
   // لو فيه يوزر داخل، فلتر المتاحة حسب خطته
   if (req.user) {
-    const subscription = await require("../models/SubscriptionMemberShip").findOne({
+    const subscription = await SubscripeMembership.findOne({
       user: req.user._id,
       status: "active",
     }).populate("plan");
@@ -33,7 +34,7 @@ exports.getFacilities = asyncHandler(async (req, res) => {
 
 
 exports.getFacility = asyncHandler(async (req, res, next) => {
-  const f = await Facility.findById(req.params.id).populate("category");
+  const f = await Facility.findById(req.params.id).populate("category", "name type");
   if (!f) return next(new ApiError("Facility not found", 404));
   res.status(200).json({ data: f });
 });

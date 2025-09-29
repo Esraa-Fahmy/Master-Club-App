@@ -20,6 +20,16 @@ const activitySchema = new mongoose.Schema(
     price: { type: Number, required: true },
     images: [String],
     location: String,
+
+
+      // Events خصائص خاصة بـ
+    isEvent: { type: Boolean, default: false },
+    isVip: { type: Boolean, default: false },
+    startDate: Date,
+    endDate: Date,
+    image: String,
+
+    
     availableDates: [Date], // legacy / optional
     allowedPlans: [{ type: mongoose.Schema.ObjectId, ref: "MembershipPlan" }],
     schedules: { type: [scheduleSchema], default: [] }, // new

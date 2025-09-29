@@ -14,12 +14,12 @@ exports.getActivities = asyncHandler(async (req, res) => {
     // simpler: front-end can filter by date
   }
 
-  const activities = await Activity.find(filter).populate("category");
+  const activities = await Activity.find(filter).populate("category", "name type");
   res.status(200).json({ results: activities.length, data: activities });
 });
 
 exports.getActivity = asyncHandler(async (req, res, next) => {
-  const a = await Activity.findById(req.params.id).populate("category");
+  const a = await Activity.findById(req.params.id).populate("category", "name type");
   if (!a) return next(new ApiError("Activity not found", 404));
   res.status(200).json({ data: a });
 });
