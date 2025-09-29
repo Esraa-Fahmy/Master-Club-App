@@ -6,12 +6,14 @@ const { protect, allowedTo } = require("../controllers/authController");
 router
   .route("/")
   .get(protect, controller.getCategories)
-  .post(protect, allowedTo("admin"), controller.createCategory);
+  .post(protect, allowedTo("admin"),   controller.uploadCategoryImage,
+    controller.resizeImage, controller.createCategory);
 
 router
   .route("/:id")
   .get(protect, controller.getCategory)
-  .put(protect, allowedTo("admin"), controller.updateCategory)
+  .put(protect, allowedTo("admin"),   controller.uploadCategoryImage,
+    controller.resizeImage, controller.updateCategory)
   .delete(protect, allowedTo("admin"), controller.deleteCategory);
 
 module.exports = router;

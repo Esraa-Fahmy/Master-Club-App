@@ -2,6 +2,37 @@ const Facility = require("../models/facilityModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
 const SubscripeMembership = require("../models/SubscriptionMemberShip")
+const { v4: uuidv4 } = require('uuid');
+const sharp = require('sharp');
+const { uploadMixOfImages } = require('../midlewares/uploadImageMiddleWare');
+const fs = require('fs');
+
+
+exports.uploadFacilityImages = uploadMixOfImages([
+    { name: 'images', maxCount: 5 }
+]);
+
+
+exports.resizeFacilityImages = asyncHandler(async (req, res, next) => {
+    if (req.files.images) {
+        req.body.images = [];
+        await Promise.all(
+            req.files.images.map(async (img, index) => {
+                const imageName = `Facility-${uuidv4()}-${Date.now()}-${index + 1}.jpeg`;
+                const path = "uploads/facilites/";
+                if (!fs.existsSync(path)) {
+                    fs.mkdirSync(path, { recursive: true });
+                }
+                await sharp(img.buffer)
+                    .toFormat('jpeg')
+                    .jpeg({ quality: 100 })
+                    .toFile(`uploads/facilites/${imageName}`);
+                req.body.images.push(imageName);
+            })
+        );
+    }
+    next();
+});
 
 // GET /facilities
 // supports query ?category=ID & ?search=term

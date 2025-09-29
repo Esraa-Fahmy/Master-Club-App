@@ -27,9 +27,9 @@ const activitySchema = new mongoose.Schema(
     isVip: { type: Boolean, default: false },
     startDate: Date,
     endDate: Date,
-    image: String,
+    EventImage: String,
 
-    
+
     availableDates: [Date], // legacy / optional
     allowedPlans: [{ type: mongoose.Schema.ObjectId, ref: "MembershipPlan" }],
     schedules: { type: [scheduleSchema], default: [] }, // new

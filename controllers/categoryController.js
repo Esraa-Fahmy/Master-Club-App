@@ -1,12 +1,57 @@
 const Category = require("../models/categoryModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
+const { v4: uuidv4 } = require('uuid');
+const sharp = require('sharp');
+const fs = require('fs');
 
-// GET /categories
-exports.getCategories = asyncHandler(async (req, res) => {
-  const categories = await Category.find();
-  res.status(200).json({ results: categories.length, data: categories });
+
+const {uploadSingleImage} = require('../midlewares/uploadImageMiddleWare')
+
+// Upload single image
+exports.uploadCategoryImage = uploadSingleImage('image');
+
+// Image processing
+exports.resizeImage = asyncHandler(async (req, res, next) => {
+  const filename = `category-${uuidv4()}-${Date.now()}.jpeg`;
+
+  if (req.file) {
+
+  const path = "uploads/categories/";
+        if (!fs.existsSync(path)) {
+            fs.mkdirSync(path, { recursive: true });
+        }
+
+    await sharp(req.file.buffer)
+      .toFormat('jpeg')
+      .jpeg({ quality: 100 })
+      .toFile(`uploads/categories/${filename}`);
+
+    // Save image into our db
+    req.body.image = filename;
+  }
+
+  next();
 });
+
+exports.getCategories = asyncHandler(async (req, res) => {
+    const page = req.query.page * 1  || 1;
+    const limit = req.query.limit * 1 || 6;
+    const skip = (page - 1) * limit
+
+
+    const searchQuery = req.query.search ? {
+        name: { $regex: req.query.search, $options: "i" }
+    } : {};
+
+    const categories = await Category.find(searchQuery)
+        .skip(skip)
+        .limit(limit);
+
+res.status(200).json({results: categories.length, page, data: categories})
+});
+
+
 
 exports.getCategory = asyncHandler(async (req, res, next) => {
   const cat = await Category.findById(req.params.id);

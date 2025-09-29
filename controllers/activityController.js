@@ -1,6 +1,53 @@
 const Activity = require("../models/activityModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
+const { v4: uuidv4 } = require('uuid');
+const sharp = require('sharp');
+const { uploadMixOfImages } = require('../midlewares/uploadImageMiddleWare');
+const fs = require('fs');
+
+
+
+exports.uploadActivityImages = uploadMixOfImages([
+    { name: 'EventImage', maxCount: 1 },
+    { name: 'images', maxCount: 5 }
+]);
+
+
+exports.resizeActivityImages = asyncHandler(async (req, res, next) => {
+    if (req.files.EventImage) {
+        const EventImageFileName = `event-${uuidv4()}-${Date.now()}-cover.jpeg`;
+
+        const path = "uploads/events/";
+        if (!fs.existsSync(path)) {
+            fs.mkdirSync(path, { recursive: true });
+        }
+        await sharp(req.files.EventImage[0].buffer)
+            .toFormat('jpeg')
+            .jpeg({ quality: 95 })
+            .toFile(`uploads/events/${EventImageFileName}`);
+        req.body.EventImage = EventImageFileName;
+    }
+    if (req.files.images) {
+        req.body.images = [];
+        await Promise.all(
+            req.files.images.map(async (img, index) => {
+                const imageName = `activity-${uuidv4()}-${Date.now()}-${index + 1}.jpeg`;
+                const path = "uploads/activites/";
+                if (!fs.existsSync(path)) {
+                    fs.mkdirSync(path, { recursive: true });
+                }
+                await sharp(img.buffer)
+                    .toFormat('jpeg')
+                    .jpeg({ quality: 100 })
+                    .toFile(`uploads/activites/${imageName}`);
+                req.body.images.push(imageName);
+            })
+        );
+    }
+    next();
+});
+
 
 // GET /activities
 // supports ?category=, ?search=, ?date=
