@@ -41,4 +41,36 @@ const activitySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+
+
+
+
+const setImageURL = (doc) => {
+  if (doc.EventImage && !doc.EventImage.startsWith(process.env.BASE_URL)) {
+      const imageUrl = `${process.env.BASE_URL}/events/${doc.EventImage}`;
+      doc.EventImage = imageUrl;
+  }
+  if (doc.images) {
+      const imagesList = [];
+      doc.images.forEach((image) => {
+          const imageUrl = image.startsWith(process.env.BASE_URL)
+              ? image
+              : `${process.env.BASE_URL}/activities/${image}`;
+          imagesList.push(imageUrl);
+      });
+      doc.images = imagesList;
+  }
+};
+
+  // findOne, findAll and update
+  activitySchema.post('init', (doc) => {
+    setImageURL(doc);
+  });
+
+  // create
+  activitySchema.post('save', (doc) => {
+    setImageURL(doc);
+  });
+
+
 module.exports = mongoose.model("Activity", activitySchema);

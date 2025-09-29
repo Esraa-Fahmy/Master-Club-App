@@ -29,4 +29,30 @@ const facilitySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+
+
+const setImageURL = (doc) => {
+  if (doc.images) {
+      const imagesList = [];
+      doc.images.forEach((image) => {
+          const imageUrl = image.startsWith(process.env.BASE_URL)
+              ? image
+              : `${process.env.BASE_URL}/facilites/${image}`;
+          imagesList.push(imageUrl);
+      });
+      doc.images = imagesList;
+  }
+};
+
+  // findOne, findAll and update
+  facilitySchema.post('init', (doc) => {
+    setImageURL(doc);
+  });
+
+  // create
+  facilitySchema.post('save', (doc) => {
+    setImageURL(doc);
+  });
+
+
 module.exports = mongoose.model("Facility", facilitySchema);
