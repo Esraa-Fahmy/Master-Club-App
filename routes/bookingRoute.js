@@ -17,7 +17,7 @@ router.put("/:id/pay", protect, allowedTo("admin"), controller.payBooking);
 router.put("/:id/refund", protect, allowedTo("admin"), controller.refundBooking);
 
 // 🔵 Schedules Management
-router.post("/:type/:id/schedules", protect, allowedTo("admin"), controller.addSchedule);
+router.post("/:type/:id/schedules", protect, allowedTo("admin"), controller.addSchedules);
 router.put("/:type/:id/schedules/:date", protect, allowedTo("admin"), controller.updateSchedule);
 router.delete("/:type/:id/schedules/:date", protect, allowedTo("admin"), controller.deleteSchedule);
 
