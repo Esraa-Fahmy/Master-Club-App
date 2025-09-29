@@ -33,14 +33,14 @@ exports.resizeActivityImages = asyncHandler(async (req, res, next) => {
         await Promise.all(
             req.files.images.map(async (img, index) => {
                 const imageName = `activity-${uuidv4()}-${Date.now()}-${index + 1}.jpeg`;
-                const path = "uploads/activites/";
+                const path = "uploads/activitهes/";
                 if (!fs.existsSync(path)) {
                     fs.mkdirSync(path, { recursive: true });
                 }
                 await sharp(img.buffer)
                     .toFormat('jpeg')
                     .jpeg({ quality: 100 })
-                    .toFile(`uploads/activites/${imageName}`);
+                    .toFile(`uploads/activitهes/${imageName}`);
                 req.body.images.push(imageName);
             })
         );
@@ -49,27 +49,52 @@ exports.resizeActivityImages = asyncHandler(async (req, res, next) => {
 });
 
 
+
+exports.setSubCategoryIdToBody = (req, res, next) => {
+  if (!req.body.subCategory) req.body.subCategory = req.params.subCategoryId;
+  next();
+};
+
+
 // GET /activities
 // supports ?category=, ?search=, ?date=
+// GET /activities
+// supports ?category=, ?subCategory=, ?search=, ?date=
 exports.getActivities = asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.category) filter.category = req.query.category;
+if (req.params.subCategoryId) filter.subCategory = req.params.subCategoryId;
   if (req.query.search) filter.title = { $regex: req.query.search, $options: "i" };
-  if (req.query.date) {
+ if (req.query.date) {
     const d = new Date(req.query.date);
-    filter.availableDates = { $in: [d.toISOString().split("T")[0], d] };
-    // simpler: front-end can filter by date
-  }
+    const nextDay = new Date(d);
+    nextDay.setDate(d.getDate() + 1);
 
-  const activities = await Activity.find(filter).populate("category", "name type");
+    filter.availableDates = { 
+        $gte: d,
+        $lt: nextDay
+    };
+}
+
+
+  const activities = await Activity.find(filter)
+    .populate("category", "name type")
+    .populate("subCategory", "name category"); // هنا ضفنا subCategory
+
   res.status(200).json({ results: activities.length, data: activities });
 });
 
+
+
 exports.getActivity = asyncHandler(async (req, res, next) => {
-  const a = await Activity.findById(req.params.id).populate("category", "name type");
+  const a = await Activity.findById(req.params.id)
+    .populate("category", "name type")
+    .populate("subCategory", "name category");
+
   if (!a) return next(new ApiError("Activity not found", 404));
   res.status(200).json({ data: a });
 });
+
 
 exports.createActivity = asyncHandler(async (req, res) => {
   const a = await Activity.create(req.body);

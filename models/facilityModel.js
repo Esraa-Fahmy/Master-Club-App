@@ -22,7 +22,9 @@ const facilitySchema = new mongoose.Schema(
     openingHours: String,
     allowedPlans: [{ type: mongoose.Schema.ObjectId, ref: "MembershipPlan" }],
     schedules: { type: [scheduleSchema], default: [] },
-    capacityPerSlot: { type: Number }
+    capacityPerSlot: { type: Number },
+    isVip: { type: Boolean, default: false }
+
   },
   { timestamps: true }
 );

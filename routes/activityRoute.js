@@ -1,13 +1,18 @@
  const express = require("express");
-const router = express.Router();
+const router = express.Router({mergeParams: true});
 const controller = require("../controllers/activityController");
 const { protect, allowedTo } = require("../controllers/authController");
 
+
+
+
+ 
 router
   .route("/")
   .get(protect, controller.getActivities)
   .post(protect, allowedTo("admin"),   controller.uploadActivityImages,
-    controller.resizeActivityImages, controller.createActivity);
+    controller.resizeActivityImages, controller.setSubCategoryIdToBody, // 🟢 هنا هنثبت subCategoryId في body
+controller.createActivity);
 
 router
   .route("/:id")

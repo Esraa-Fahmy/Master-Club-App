@@ -26,6 +26,7 @@ app.use("/api/v1/user", require("./routes/userRoute"));
 app.use("/api/v1/membership-plans", require("./routes/planMmberShipRoute"));
 app.use("/api/v1/membership-subscriptions", require("./routes/subScriptionRoute"));
 app.use("/api/v1/categories", require("./routes/categoryRoute"));
+app.use("/api/v1/subCategories", require("./routes/subCategoryRoute"));
 app.use("/api/v1/facilities", require("./routes/facilitesRoute"));
 app.use("/api/v1/activities", require("./routes/activityRoute"));
 app.use("/api/v1/bookings", require("./routes/bookingRoute"));

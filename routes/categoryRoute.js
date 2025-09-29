@@ -3,6 +3,10 @@ const router = express.Router();
 const controller = require("../controllers/categoryController");
 const { protect, allowedTo } = require("../controllers/authController");
 
+const subCategoriesRoute = require('./subCategoryRoute')
+
+router.use('/:categoryId/subcategories', subCategoriesRoute)
+
 router
   .route("/")
   .get(protect, controller.getCategories)
