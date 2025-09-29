@@ -34,7 +34,6 @@ const activitySchema = new mongoose.Schema(
     EventImage: String,
 
 
-    availableDates: [Date], // legacy / optional
     allowedPlans: [{ type: mongoose.Schema.ObjectId, ref: "MembershipPlan" }],
     schedules: { type: [scheduleSchema], default: [] }, // new
     capacityPerSlot: { type: Number }, // optional global default
@@ -75,14 +74,6 @@ const setImageURL = (doc) => {
   });
 
 
-
-
-  activitySchema.pre("save", function(next) {
-  if(this.schedules && this.schedules.length) {
-    this.availableDates = this.schedules.map(s => s.date);
-  }
-  next();
-});
 
 
 module.exports = mongoose.model("Activity", activitySchema);
