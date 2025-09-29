@@ -82,9 +82,12 @@ exports.getActivity = asyncHandler(async (req, res, next) => {
 exports.createActivity = asyncHandler(async (req, res) => {
   // لو VIP → اعبي allowedPlans تلقائي
   if (req.body.isVip) {
-    const vipPlans = await MembershipPlan.find({ type: "VIP" });
+  const vipPlans = await MembershipPlan.find({ type: "VIP" });
+  // لو allowedPlans فاضية، اعبيها بالـ VIP plans، وإلا خليه زي ما هو
+  if (!req.body.allowedPlans || req.body.allowedPlans.length === 0) {
     req.body.allowedPlans = vipPlans.map(p => p._id);
   }
+}
 
   // تأكد من وجود schedules
   if (!req.body.schedules) req.body.schedules = [];
