@@ -75,4 +75,14 @@ const setImageURL = (doc) => {
   });
 
 
+
+
+  activitySchema.pre("save", function(next) {
+  if(this.schedules && this.schedules.length) {
+    this.availableDates = this.schedules.map(s => s.date);
+  }
+  next();
+});
+
+
 module.exports = mongoose.model("Activity", activitySchema);
