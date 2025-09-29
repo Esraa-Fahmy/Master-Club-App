@@ -35,21 +35,32 @@ exports.resizeImage = asyncHandler(async (req, res, next) => {
 });
 
 exports.getCategories = asyncHandler(async (req, res) => {
-    const page = req.query.page * 1  || 1;
+    const page = req.query.page * 1 || 1;
     const limit = req.query.limit * 1 || 6;
-    const skip = (page - 1) * limit
+    const skip = (page - 1) * limit;
 
-
+    // فلترة البحث باسم الكاتجوري
     const searchQuery = req.query.search ? {
         name: { $regex: req.query.search, $options: "i" }
     } : {};
 
-    const categories = await Category.find(searchQuery)
+    // فلترة type لو موجودة في query
+    const typeQuery = req.query.type ? { type: req.query.type } : {};
+
+    // دمج الفلاتر مع بعض
+    const filter = { ...searchQuery, ...typeQuery };
+
+    const categories = await Category.find(filter)
         .skip(skip)
         .limit(limit);
 
-res.status(200).json({results: categories.length, page, data: categories})
+    res.status(200).json({
+        results: categories.length,
+        page,
+        data: categories
+    });
 });
+
 
 
 
