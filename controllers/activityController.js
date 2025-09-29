@@ -80,14 +80,25 @@ exports.getActivity = asyncHandler(async (req, res, next) => {
 
 // ====== Create Activity ======
 exports.createActivity = asyncHandler(async (req, res) => {
-  // لو VIP → اعبي allowedPlans تلقائي
-  if (req.body.isVip) {
-  const vipPlans = await MembershipPlan.find({ type: "VIP" });
-  // لو allowedPlans فاضية، اعبيها بالـ VIP plans، وإلا خليه زي ما هو
-  if (!req.body.allowedPlans || req.body.allowedPlans.length === 0) {
-    req.body.allowedPlans = vipPlans.map(p => p._id);
+  // لو allowedPlans موجودة كـ string (من form-data)، حوّلها لـ array
+  if (req.body.allowedPlans && typeof req.body.allowedPlans === 'string') {
+    try {
+      req.body.allowedPlans = JSON.parse(req.body.allowedPlans);
+      if (!Array.isArray(req.body.allowedPlans)) {
+        req.body.allowedPlans = []; // fallback لو مش array
+      }
+    } catch (err) {
+      req.body.allowedPlans = []; // fallback لو JSON.parse فشل
+    }
   }
-}
+
+  // لو VIP → اعبي allowedPlans تلقائي لو فاضية
+  if (req.body.isVip) {
+    const vipPlans = await MembershipPlan.find({ type: "VIP" });
+    if (!req.body.allowedPlans || req.body.allowedPlans.length === 0) {
+      req.body.allowedPlans = vipPlans.map(p => p._id);
+    }
+  }
 
   // تأكد من وجود schedules
   if (!req.body.schedules) req.body.schedules = [];
@@ -95,6 +106,7 @@ exports.createActivity = asyncHandler(async (req, res) => {
   const a = await Activity.create(req.body);
   res.status(201).json({ data: a });
 });
+
 
 // ====== Update Activity ======
 exports.updateActivity = asyncHandler(async (req, res, next) => {
