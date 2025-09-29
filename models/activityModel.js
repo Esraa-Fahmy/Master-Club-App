@@ -18,8 +18,10 @@ const activitySchema = new mongoose.Schema(
     description: String,
     category: { type: mongoose.Schema.Types.ObjectId, ref: "Category"},
    subCategory: { type: mongoose.Schema.Types.ObjectId, ref: "SubCategory", required: true },
-    
-    price: { type: Number, required: true },
+    benfites : [{
+      type :String
+    }],
+    price: { type: Number },
     images: [String],
     location: String,
 
