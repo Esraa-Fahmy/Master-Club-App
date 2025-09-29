@@ -348,19 +348,34 @@ exports.refundBooking = asyncHandler(async (req, res, next) => {
 // Schedules Management (Admin)
 // =======================
 
+// =======================
+// Schedules Management (Admin) - Improved
+// =======================
+
 // POST /:type/:id/schedules
-exports.addSchedule = asyncHandler(async (req, res, next) => {
+exports.addSchedules = asyncHandler(async (req, res, next) => {
   const { type, id } = req.params; // type = activity | facility
-  const { date, slots } = req.body;
-  if (!date || !slots) return next(new ApiError("date and slots required", 400));
+  const schedules = req.body.schedules || [];
+
+  if (!schedules.length) return next(new ApiError("schedules required", 400));
 
   const Model = type === "activity" ? Activity : Facility;
   const item = await Model.findById(id);
   if (!item) return next(new ApiError(`${type} not found`, 404));
 
-  item.schedules.push({ date, slots });
-  await item.save();
+  schedules.forEach(s => {
+    if (!s.date || !s.slots) throw new ApiError("Each schedule must have date and slots", 400);
 
+    // لو في schedule لنفس التاريخ، استبدله
+    const existingIndex = item.schedules.findIndex(sc => sc.date === s.date);
+    if (existingIndex !== -1) {
+      item.schedules[existingIndex] = s;
+    } else {
+      item.schedules.push(s);
+    }
+  });
+
+  await item.save();
   res.status(201).json({ status: "success", data: item.schedules });
 });
 
@@ -368,18 +383,31 @@ exports.addSchedule = asyncHandler(async (req, res, next) => {
 exports.updateSchedule = asyncHandler(async (req, res, next) => {
   const { type, id, date } = req.params;
   const { slots } = req.body;
+
+  if (!slots) return next(new ApiError("slots required", 400));
+
+  const Model = type === "activity" ? Activity : Facility;
+  const item = await Model.findById(id);
+  if (!item) return next(new ApiError(`${type} not found`, 404));
+
+  const scheduleIndex = item.schedules.findIndex(s => s.date === date);
+  if (scheduleIndex === -1) return next(new ApiError("Schedule not found for this date", 404));
+
+  item.schedules[scheduleIndex].slots = slots;
+  await item.save();
+
+  res.status(200).json({ status: "success", data: item.schedules[scheduleIndex] });
+});
+
+// GET /:type/:id/schedules
+exports.getSchedules = asyncHandler(async (req, res, next) => {
+  const { type, id } = req.params;
   const Model = type === "activity" ? Activity : Facility;
 
   const item = await Model.findById(id);
   if (!item) return next(new ApiError(`${type} not found`, 404));
 
-  const schedule = item.schedules.find((s) => s.date === date);
-  if (!schedule) return next(new ApiError("Schedule not found for this date", 404));
-
-  schedule.slots = slots;
-  await item.save();
-
-  res.status(200).json({ status: "success", data: schedule });
+  res.status(200).json({ status: "success", data: item.schedules });
 });
 
 // DELETE /:type/:id/schedules/:date
@@ -390,23 +418,8 @@ exports.deleteSchedule = asyncHandler(async (req, res, next) => {
   const item = await Model.findById(id);
   if (!item) return next(new ApiError(`${type} not found`, 404));
 
-  item.schedules = item.schedules.filter((s) => s.date !== date);
+  item.schedules = item.schedules.filter(s => s.date !== date);
   await item.save();
-
-  res.status(200).json({ status: "success", data: item.schedules });
-});
-
-// =======================
-// User view schedules
-// =======================
-
-// GET /:type/:id/schedules
-exports.getSchedules = asyncHandler(async (req, res, next) => {
-  const { type, id } = req.params;
-  const Model = type === "activity" ? Activity : Facility;
-
-  const item = await Model.findById(id);
-  if (!item) return next(new ApiError(`${type} not found`, 404));
 
   res.status(200).json({ status: "success", data: item.schedules });
 });
