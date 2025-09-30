@@ -241,15 +241,7 @@ exports.getAllBookings = asyncHandler(async (req, res, next) => {
     .select("date timeSlot slotId guests specialRequest status price paymentStatus")
     .populate({
       path: "user",
-      select: "userName membershipSubscription",
-      populate: {
-        path: "membershipSubscription",
-        populate: {
-          path: "plan",
-          select: "name type",
-        },
-        select: "plan status startDate expiresAt",
-      },
+      select: "userName phone",
     })
     .populate({
       path: "activity",
@@ -261,10 +253,40 @@ exports.getAllBookings = asyncHandler(async (req, res, next) => {
     })
     .sort({ createdAt: -1 }); // عشان يجي الأحدث الأول
 
+    
+// هات عضويات كل يوزر مربوط بالبوكينج
+const withMemberships = await Promise.all(
+  bookings.map(async (b) => {
+    const membership = await SubscriptionMemberShip.find({
+      user: b.user._id,
+      status: "active",
+    }).populate("plan", "name type");
+
+    return {
+      ...b.toObject(),
+      user: {
+        ...b.user.toObject(),
+        membership: membership
+          ? {
+              subscriptionId: membership.subscriptionId,
+              planName: membership.plan?.name,
+              planType: membership.plan?.type,
+              startDate: membership.startDate,
+              expiresAt: membership.expiresAt,
+              status: membership.status,
+              points: membership.points || 0,
+              visitsUsed: membership.visitsUsed || 0,
+            }
+          : null,
+      },
+    };
+  })
+);
+
   res.status(200).json({
-    status: "success",
-    results: bookings.length,
-    data: bookings,
+  status: "success",
+  results: withMemberships.length,
+  data: withMemberships,
   });
 });
 
