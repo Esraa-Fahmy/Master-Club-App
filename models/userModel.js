@@ -69,6 +69,7 @@ const userSchema = new mongoose.Schema(
     passwordResetCode: String,
     passwordResetExpires: Date,
     passwordResetVerified: Boolean,
+    wishlist : [String],
    
   },
   { timestamps: true }

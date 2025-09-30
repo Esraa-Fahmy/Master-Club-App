@@ -32,6 +32,8 @@ app.use("/api/v1/activities", require("./routes/activityRoute"));
 app.use("/api/v1/bookings", require("./routes/bookingRoute"));
 app.use("/api/v1/home", require("./routes/homeRoute"));
 app.use("/api/v1/notifications", require("./routes/notificationsRoute"));
+app.use("/api/v1/wishlist", require("./routes/wishlistRoute"));
+
 
 // Global Error Handler
 app.use(globalError);
