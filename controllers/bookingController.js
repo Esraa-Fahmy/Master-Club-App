@@ -222,16 +222,17 @@ exports.cancelBooking = asyncHandler(async (req, res, next) => {
 // get all bookings for admin
 exports.getAllBookings = asyncHandler(async (req, res, next) => {
   const bookings = await Booking.find()
-    .select("date timeSlot slotId guests specialRequest status") // دول اللي يخصوا الحجز نفسه
+    .select("date timeSlot slotId guests specialRequest status price paymentStatus") // الحاجات الأساسية
     .populate({
       path: "user",
-      select: "name", // اسم اليوزر بس
-    })
-    .populate({
-      path: "subscription",
+      select: "userName membershipSubscription",
       populate: {
-        path: "plan",
-        select: "name type", // اسم ونوع الخطة
+        path: "membershipSubscription",
+        populate: {
+          path: "plan",
+          select: "name type", // اسم ونوع الخطة
+        },
+        select: "plan status startDate expiresAt", // اللي هيرجع من الاشتراك
       },
     })
     .populate({
@@ -241,10 +242,6 @@ exports.getAllBookings = asyncHandler(async (req, res, next) => {
     .populate({
       path: "facility",
       select: "name", // المرفق
-    })
-    .populate({
-      path: "schedule",
-      select: "day startTime endTime", // المواعيد
     });
 
   res.status(200).json({
