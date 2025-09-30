@@ -217,12 +217,28 @@ exports.cancelBooking = asyncHandler(async (req, res, next) => {
 // =======================
 // Admin Endpoints
 // =======================
-
 // GET /bookings (admin)
 // get all bookings for admin
 exports.getAllBookings = asyncHandler(async (req, res, next) => {
-  const bookings = await Booking.find()
-    .select("date timeSlot slotId guests specialRequest status price paymentStatus") // الحاجات الأساسية
+  const filter = {};
+
+  // فلترة بالـ status
+  if (req.query.status) {
+    filter.status = req.query.status; // pending, confirmed, cancelled, completed
+  }
+
+  // فلترة بتاريخ معين
+  if (req.query.date) {
+    filter.date = req.query.date; // YYYY-MM-DD
+  }
+
+  // فلترة بمستخدم معين
+  if (req.query.user) {
+    filter.user = req.query.user;
+  }
+
+  const bookings = await Booking.find(filter)
+    .select("date timeSlot slotId guests specialRequest status price paymentStatus")
     .populate({
       path: "user",
       select: "userName membershipSubscription",
@@ -230,19 +246,20 @@ exports.getAllBookings = asyncHandler(async (req, res, next) => {
         path: "membershipSubscription",
         populate: {
           path: "plan",
-          select: "name type", // اسم ونوع الخطة
+          select: "name type",
         },
-        select: "plan status startDate expiresAt", // اللي هيرجع من الاشتراك
+        select: "plan status startDate expiresAt",
       },
     })
     .populate({
       path: "activity",
-      select: "name", // النشاط
+      select: "name",
     })
     .populate({
       path: "facility",
-      select: "name", // المرفق
-    });
+      select: "name",
+    })
+    .sort({ createdAt: -1 }); // عشان يجي الأحدث الأول
 
   res.status(200).json({
     status: "success",
@@ -250,6 +267,7 @@ exports.getAllBookings = asyncHandler(async (req, res, next) => {
     data: bookings,
   });
 });
+
 
 
 // PUT /bookings/:id/approve
