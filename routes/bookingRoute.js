@@ -22,6 +22,7 @@ router.put("/:type/:id/schedules/:date", protect, allowedTo("admin"), controller
 router.delete("/:type/:id/schedules/:date", protect, allowedTo("admin"), controller.deleteSchedule);
 
 // 🟢 User view schedules
-router.get("/:type/:id/schedules", protect, allowedTo("user"), controller.getSchedules);
+router.get("/:type/:id/schedules", protect, controller.getSchedules);
 
 module.exports = router;
+
