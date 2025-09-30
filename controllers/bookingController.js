@@ -218,7 +218,7 @@ exports.cancelBooking = asyncHandler(async (req, res, next) => {
 // Admin Endpoints
 // =======================
 // GET /bookings (admin)
-// get all bookings for admin
+// GET /bookings (admin)
 exports.getAllBookings = asyncHandler(async (req, res, next) => {
   const filter = {};
 
@@ -251,42 +251,44 @@ exports.getAllBookings = asyncHandler(async (req, res, next) => {
       path: "facility",
       select: "name",
     })
-    .sort({ createdAt: -1 }); // عشان يجي الأحدث الأول
+    .sort({ createdAt: -1 });
 
-    
-// هات عضويات كل يوزر مربوط بالبوكينج
-const withMemberships = await Promise.all(
-  bookings.map(async (b) => {
-  const membership = await SubscriptionMemberShip.find({
-  user: b.user._id,
-}).populate("plan", "name type");
+  // هات العضوية الاكتيف لكل يوزر
+  const withMemberships = await Promise.all(
+    bookings.map(async (b) => {
+      const membership = await SubscriptionMemberShip.findOne({
+        user: b.user._id,
+        status: "active",
+      }).populate("plan", "name type");
 
-
-    return {
-      ...b.toObject(),
-      user: {
-        ...b.user.toObject(),
-        membership: membership
-          ? {
-              subscriptionId: membership.subscriptionId,
-              planName: membership.plan?.name,
-              planType: membership.plan?.type,
-              startDate: membership.startDate,
-              expiresAt: membership.expiresAt,
-              status: membership.status,
-            }
-          : null,
-      },
-    };
-  })
-);
+      return {
+        ...b.toObject(),
+        user: {
+          ...b.user.toObject(),
+          membership: membership
+            ? {
+                subscriptionId: membership.subscriptionId,
+                planName: membership.plan?.name,
+                planType: membership.plan?.type,
+                startDate: membership.startDate,
+                expiresAt: membership.expiresAt,
+                status: membership.status,
+                points: membership.points || 0,
+                visitsUsed: membership.visitsUsed || 0,
+              }
+            : null,
+        },
+      };
+    })
+  );
 
   res.status(200).json({
-  status: "success",
-  results: withMemberships.length,
-  data: withMemberships,
+    status: "success",
+    results: withMemberships.length,
+    data: withMemberships,
   });
 });
+
 
 
 
