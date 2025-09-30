@@ -70,10 +70,11 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
         date,
         timeSlot,
         status: { $in: ["pending", "confirmed"] },
-        $or: [
-          activityId ? { activity: mongoose.Types.ObjectId(activityId) } : {},
-          facilityId ? { facility: mongoose.Types.ObjectId(facilityId) } : {},
-        ].filter((o) => Object.keys(o).length > 0),
+      $or: [
+  activityId ? { activity: new mongoose.Types.ObjectId(activityId) } : {},
+  facilityId ? { facility: new mongoose.Types.ObjectId(facilityId) } : {},
+].filter((o) => Object.keys(o).length > 0),
+
       },
     },
     { $group: { _id: null, totalGuests: { $sum: "$guests" } } },
