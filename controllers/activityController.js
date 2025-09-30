@@ -48,25 +48,46 @@ exports.setSubCategoryIdToBody = (req, res, next) => {
   if (!req.body.subCategory) req.body.subCategory = req.params.subCategoryId;
   next();
 };
-
 // ====== Get Activities ======
 exports.getActivities = asyncHandler(async (req, res) => {
-  const filter = {};
+  // 🟢 Pagination
+  const page = req.query.page * 1 || 1;
+  const limit = req.query.limit * 1 || 10;
+  const skip = (page - 1) * limit;
+
+  // 🟢 Filter object
+  let filter = {};
   if (req.query.category) filter.category = req.query.category;
   if (req.params.subCategoryId) filter.subCategory = req.params.subCategoryId;
   if (req.query.search) filter.title = { $regex: req.query.search, $options: "i" };
 
-  // فلترة حسب التاريخ على schedules
+  // فلترة حسب التاريخ (schedules)
   if (req.query.date) {
     filter.schedules = { $elemMatch: { date: req.query.date } };
   }
 
+  // 🟢 حساب العدد الكلي بعد الفلترة
+  const totalActivities = await Activity.countDocuments(filter);
+  const totalPages = Math.ceil(totalActivities / limit);
+
+  // 🟢 الاستعلام مع الـ populate
   const activities = await Activity.find(filter)
+    .skip(skip)
+    .limit(limit)
     .populate("category", "name type")
     .populate("subCategory", "name category");
 
-  res.status(200).json({ results: activities.length, data: activities });
+  res.status(200).json({
+    results: activities.length,
+    totalActivities,
+    totalPages,
+    currentPage: page,
+    hasNextPage: page < totalPages,
+    hasPrevPage: page > 1,
+    data: activities,
+  });
 });
+
 
 // ====== Get Single Activity ======
 exports.getActivity = asyncHandler(async (req, res, next) => {
