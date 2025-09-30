@@ -110,7 +110,20 @@ exports.createActivity = asyncHandler(async (req, res) => {
 
 // ====== Update Activity ======
 exports.updateActivity = asyncHandler(async (req, res, next) => {
-  const a = await Activity.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const updateOps = {};
+
+  // لو فيه plans عايزة تضاف
+  if (req.body.allowedPlans && req.body.allowedPlans.length > 0) {
+    updateOps.$addToSet = { allowedPlans: { $each: req.body.allowedPlans } };
+  }
+
+  // لو فيه plans عايزة تتشال
+  if (req.body.removePlans && req.body.removePlans.length > 0) {
+    updateOps.$pull = { allowedPlans: { $in: req.body.removePlans } };
+  }
+
+  const a = await Activity.findByIdAndUpdate(req.params.id, updateOps, { new: true });
+
   if (!a) return next(new ApiError("Activity not found", 404));
   res.status(200).json({ data: a });
 });
