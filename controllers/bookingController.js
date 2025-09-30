@@ -219,18 +219,41 @@ exports.cancelBooking = asyncHandler(async (req, res, next) => {
 // =======================
 
 // GET /bookings (admin)
-exports.getAllBookings = asyncHandler(async (req, res) => {
-  const filter = {};
-  if (req.query.status) filter.status = req.query.status;
-  const bookings = await Booking.find(filter)
-    .populate("user activity")
+// get all bookings for admin
+exports.getAllBookings = asyncHandler(async (req, res, next) => {
+  const bookings = await Booking.find()
+    .select("date timeSlot slotId guests specialRequest status") // دول اللي يخصوا الحجز نفسه
+    .populate({
+      path: "user",
+      select: "name", // اسم اليوزر بس
+    })
+    .populate({
+      path: "subscription",
+      populate: {
+        path: "plan",
+        select: "name type", // اسم ونوع الخطة
+      },
+    })
+    .populate({
+      path: "activity",
+      select: "name", // النشاط
+    })
     .populate({
       path: "facility",
-      populate: { path: "category", select: "name type allowedPlans" },
+      select: "name", // المرفق
     })
-    .sort({ createdAt: -1 });
-  res.status(200).json({ results: bookings.length, data: bookings });
+    .populate({
+      path: "schedule",
+      select: "day startTime endTime", // المواعيد
+    });
+
+  res.status(200).json({
+    status: "success",
+    results: bookings.length,
+    data: bookings,
+  });
 });
+
 
 // PUT /bookings/:id/approve
 exports.approveBooking = asyncHandler(async (req, res, next) => {
