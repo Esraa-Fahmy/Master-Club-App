@@ -238,7 +238,7 @@ exports.getAllBookings = asyncHandler(async (req, res, next) => {
   }
 
   const bookings = await Booking.find(filter)
-    .select("date timeSlot slotId guests specialRequest status price paymentStatus")
+    .select("date timeSlot slotId guests specialRequest status")
     .populate({
       path: "user",
       select: "userName phone",
@@ -257,10 +257,10 @@ exports.getAllBookings = asyncHandler(async (req, res, next) => {
 // هات عضويات كل يوزر مربوط بالبوكينج
 const withMemberships = await Promise.all(
   bookings.map(async (b) => {
-    const membership = await SubscriptionMemberShip.find({
-      user: b.user._id,
-      status: "active",
-    }).populate("plan", "name type");
+  const membership = await SubscriptionMemberShip.find({
+  user: b.user._id,
+}).populate("plan", "name type");
+
 
     return {
       ...b.toObject(),
@@ -274,8 +274,6 @@ const withMemberships = await Promise.all(
               startDate: membership.startDate,
               expiresAt: membership.expiresAt,
               status: membership.status,
-              points: membership.points || 0,
-              visitsUsed: membership.visitsUsed || 0,
             }
           : null,
       },
