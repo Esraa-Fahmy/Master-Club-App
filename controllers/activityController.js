@@ -109,17 +109,37 @@ exports.createActivity = asyncHandler(async (req, res) => {
 
 
 // ====== Update Activity ======
+// ====== Update Activity ======
 exports.updateActivity = asyncHandler(async (req, res, next) => {
   const updateOps = {};
 
-  // لو فيه plans عايزة تضاف
-  if (req.body.allowedPlans && req.body.allowedPlans.length > 0) {
-    updateOps.$addToSet = { allowedPlans: { $each: req.body.allowedPlans } };
+  // تأكدي إن allowedPlans Array
+  if (req.body.allowedPlans) {
+    let plans = req.body.allowedPlans;
+
+    if (typeof plans === "string") {
+      try {
+        plans = JSON.parse(plans); // يحول string إلى Array
+      } catch (err) {
+        return next(new ApiError("allowedPlans must be an array", 400));
+      }
+    }
+
+    updateOps.$addToSet = { allowedPlans: { $each: plans } };
   }
 
-  // لو فيه plans عايزة تتشال
-  if (req.body.removePlans && req.body.removePlans.length > 0) {
-    updateOps.$pull = { allowedPlans: { $in: req.body.removePlans } };
+  if (req.body.removePlans) {
+    let remove = req.body.removePlans;
+
+    if (typeof remove === "string") {
+      try {
+        remove = JSON.parse(remove);
+      } catch (err) {
+        return next(new ApiError("removePlans must be an array", 400));
+      }
+    }
+
+    updateOps.$pull = { allowedPlans: { $in: remove } };
   }
 
   const a = await Activity.findByIdAndUpdate(req.params.id, updateOps, { new: true });
@@ -127,6 +147,7 @@ exports.updateActivity = asyncHandler(async (req, res, next) => {
   if (!a) return next(new ApiError("Activity not found", 404));
   res.status(200).json({ data: a });
 });
+
 
 // ====== Delete Activity ======
 exports.deleteActivity = asyncHandler(async (req, res, next) => {
