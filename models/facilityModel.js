@@ -20,10 +20,19 @@ const facilitySchema = new mongoose.Schema(
     images: [String],
     location: String,
     openingHours: String,
-    allowedPlans: [{ type: mongoose.Schema.ObjectId, ref: "MembershipPlan" }],
-    schedules: { type: [scheduleSchema], default: [] },
+   allowedPlans: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "MembershipPlan" }
+    ], 
+   schedules: { type: [scheduleSchema], default: [] },
     capacityPerSlot: { type: Number },
-    isVip: { type: Boolean, default: false }
+    isVip: { type: Boolean, default: false },
+    isRecommended: {
+  type: Boolean,
+  default: false
+},
+  privateBookingAllowed: { type: Boolean, default: false }
+
+
 
   },
   { timestamps: true }

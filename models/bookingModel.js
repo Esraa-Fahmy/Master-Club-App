@@ -12,6 +12,8 @@ const bookingSchema = new mongoose.Schema({
   status: { type: String, enum: ["pending", "confirmed", "cancelled", "completed"], default: "pending" },
   price: { type: Number, required: true },
   paymentStatus: { type: String, enum: ["unpaid", "paid", "refunded"], default: "unpaid" },
+  isPrivate: { type: Boolean, default: false }, // true = المكان كله للحجز ده
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("Booking", bookingSchema);

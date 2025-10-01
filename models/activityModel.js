@@ -37,7 +37,12 @@ const activitySchema = new mongoose.Schema(
     allowedPlans: [{ type: mongoose.Schema.ObjectId, ref: "MembershipPlan" }],
     schedules: { type: [scheduleSchema], default: [] }, // new
     capacityPerSlot: { type: Number }, // optional global default
-    requiresPlayers: { type: Boolean, default: false } // لو النشاط يحتاج عدد لاعبين
+    requiresPlayers: { type: Boolean, default: false },
+    isRecommended: {
+  type: Boolean,
+  default: false
+}
+ // لو النشاط يحتاج عدد لاعبين
   },
   { timestamps: true }
 );

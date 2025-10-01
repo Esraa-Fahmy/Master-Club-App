@@ -16,7 +16,16 @@ const mongoose = require("mongoose");
 
 // POST /bookings
 exports.createBooking = asyncHandler(async (req, res, next) => {
-  const { activityId, facilityId, date, timeSlot, price, specialRequest, guests = 1 } = req.body;
+  const { 
+    activityId, 
+    facilityId, 
+    date, 
+    timeSlot, 
+    price, 
+    specialRequest, 
+    guests = 1, 
+    isPrivate = false   // 🆕 خيار جديد
+  } = req.body;
 
   if (!activityId && !facilityId)
     return next(new ApiError("Booking must be for activity or facility", 400));
@@ -28,7 +37,7 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
     : await Facility.findById(facilityId);
   if (!item) return next(new ApiError("Activity/Facility not found", 404));
 
-  // Check user's active membership plan
+  // === Check membership plan
   let userPlanId = null;
   const activeSub = await SubscriptionMemberShip.findOne({
     user: req.user._id,
@@ -44,7 +53,7 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
       return next(new ApiError("Your membership plan does not allow booking this item", 403));
   }
 
-  // Find schedule + slot
+  // === Find schedule + slot
   const targetSchedule = (item.schedules || []).find((s) => s.date === date);
   if (!targetSchedule) return next(new ApiError("No schedule found for this date", 400));
 
@@ -53,7 +62,7 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
   );
   if (!slot) return next(new ApiError("Time slot not available for this date", 400));
 
-  // Check duplicate booking
+  // === Check duplicate booking by same user
   const userDuplicate = await Booking.findOne({
     user: req.user._id,
     date,
@@ -63,31 +72,50 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
   });
   if (userDuplicate) return next(new ApiError("You already have a booking for this slot", 400));
 
-  // Check capacity
-  const existingCount = await Booking.aggregate([
-    {
-      $match: {
-        date,
-        timeSlot,
-        status: { $in: ["pending", "confirmed"] },
-      $or: [
-  activityId ? { activity: new mongoose.Types.ObjectId(activityId) } : {},
-  facilityId ? { facility: new mongoose.Types.ObjectId(facilityId) } : {},
-].filter((o) => Object.keys(o).length > 0),
+  // 🆕 === Private Booking Case
+  if (isPrivate) {
+    if (!item.privateBookingAllowed) {
+      return next(new ApiError("Private booking not allowed for this facility", 400));
+    }
 
+    // اتأكد إن مفيش أي حجز تاني على نفس الـ slot
+    const conflict = await Booking.findOne({
+      facility: facilityId,
+      date,
+      timeSlot,
+      status: { $in: ["pending", "confirmed"] },
+    });
+    if (conflict) return next(new ApiError("This slot is already booked privately", 400));
+
+    // هيحجز المكان كله → guests = full capacity
+    guests = slot.capacity || item.capacityPerSlot || 1;
+
+  } else {
+    // === Normal Guests Booking (زي الكود الحالي)
+    const existingCount = await Booking.aggregate([
+      {
+        $match: {
+          date,
+          timeSlot,
+          status: { $in: ["pending", "confirmed"] },
+          $or: [
+            activityId ? { activity: new mongoose.Types.ObjectId(activityId) } : {},
+            facilityId ? { facility: new mongoose.Types.ObjectId(facilityId) } : {},
+          ].filter((o) => Object.keys(o).length > 0),
+        },
       },
-    },
-    { $group: { _id: null, totalGuests: { $sum: "$guests" } } },
-  ]);
+      { $group: { _id: null, totalGuests: { $sum: "$guests" } } },
+    ]);
 
-  const currentGuests = existingCount[0] ? existingCount[0].totalGuests : 0;
-  const capacity = slot.capacity || item.capacityPerSlot || 1;
+    const currentGuests = existingCount[0] ? existingCount[0].totalGuests : 0;
+    const capacity = slot.capacity || item.capacityPerSlot || 1;
 
-  if (currentGuests + guests > capacity) {
-    return next(new ApiError("This slot is fully booked", 400));
+    if (currentGuests + guests > capacity) {
+      return next(new ApiError("This slot is fully booked", 400));
+    }
   }
 
-  // Create booking
+  // === Create booking
   const booking = await Booking.create({
     user: req.user._id,
     activity: activityId || undefined,
@@ -96,20 +124,21 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
     timeSlot: slot.time,
     slotId: slot.id || uuidv4(),
     guests,
+    isPrivate, // 🆕 نحتفظ بيها في الداتا
     specialRequest: specialRequest || "",
     price: price || 0,
     paymentStatus: req.body.paymentStatus || "unpaid",
     status: "pending",
   });
 
-  // Increase reserved
+  // === Update reserved
   await (activityId ? Activity : Facility).updateOne(
     { _id: item._id, "schedules.date": date, "schedules.slots.time": slot.time },
     { $inc: { "schedules.$[s].slots.$[sl].reserved": guests } },
     { arrayFilters: [{ "s.date": date }, { "sl.time": slot.time }] }
   );
 
-  // Notify user
+  // === Notify user
   await sendNotification(
     req.user._id,
     "طلب حجز جديد",
@@ -120,6 +149,7 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({ status: "success", data: booking });
 });
+
 
 
 // GET /bookings/my

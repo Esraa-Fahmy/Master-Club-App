@@ -8,16 +8,16 @@ const wishlistSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    item: {
+    item: [{
       type: mongoose.Schema.ObjectId,
       required: true,
       refPath: "itemType", // ديناميك على حسب النوع
-    },
-    itemType: {
+    }],
+    itemType: [{
       type: String,
       required: true,
       enum: ["Activity", "Facility", "Product"], // الأنواع اللي عندك
-    },
+    }],
     createdAt: {
       type: Date,
       default: Date.now,
