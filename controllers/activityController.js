@@ -85,7 +85,7 @@ exports.getActivities = asyncHandler(async (req, res) => {
     hasNextPage: page < totalPages,
     hasPrevPage: page > 1,
     data: activities,
-  });
+  }); 
 });
 
 

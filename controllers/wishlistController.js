@@ -4,8 +4,23 @@ const Wishlist = require("../models/wishistModel");
 const ApiError = require("../utils/apiError");
 
 // ➕ إضافة عنصر للويش ليست
+// controllers/wishlistController.js
+
+const Product = require("../models/productModel");
+
+// ➕ إضافة عنصر للويش ليست
 exports.addToWishlist = asyncHandler(async (req, res, next) => {
   const { itemId, itemType } = req.body;
+
+  if (!itemId || !itemType) {
+    return next(new ApiError("Item ID and itemType are required", 400));
+  }
+
+  // ✅ تحقق أن المنتج موجود قبل إضافته
+  if (itemType === "Product") {
+    const product = await Product.findById(itemId);
+    if (!product) return next(new ApiError("Product not found", 404));
+  }
 
   const exists = await Wishlist.findOne({
     user: req.user._id,
@@ -27,12 +42,16 @@ exports.addToWishlist = asyncHandler(async (req, res, next) => {
 });
 
 // 📜 عرض الويش ليست الخاصة باليوزر
-exports.getMyWishlist = asyncHandler(async (req, res) => {
-  const wishlist = await Wishlist.find({ user: req.user._id })
-    .populate("item"); // هيجيب التفاصيل كاملة للعنصر
+exports.getMyWishlist = asyncHandler(async (req, res, next) => {
+  const wishlist = await Wishlist.find({ user: req.user._id }).populate("item");
+
+  if (!wishlist || wishlist.length === 0) {
+    return next(new ApiError("Wishlist is empty", 404));
+  }
 
   res.status(200).json({ results: wishlist.length, data: wishlist });
 });
+
 
 // ❌ حذف عنصر من الويش ليست
 exports.removeFromWishlist = asyncHandler(async (req, res, next) => {
