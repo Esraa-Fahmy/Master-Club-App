@@ -45,6 +45,7 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   if (req.query.category) filter.category = req.query.category;
   if (req.query.search) filter.name = { $regex: req.query.search, $options: "i" };
 
+  // ✅ نجيب كل الفاسيليتيز الأول
   let facilities = await Facility.find(filter)
     .skip(skip)
     .limit(limit)
@@ -54,8 +55,8 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   const totalFacilities = await Facility.countDocuments(filter);
   const totalPages = Math.ceil(totalFacilities / limit);
 
-  // ✅ لو المستخدم أدمن → يرجع الكل بدون فلترة
-  if (req.user && req.user.role === "admin") {
+  // ✅ لو مفيش يوزر أو أدمن → رجع الكل
+  if (!req.user || req.user.role === "admin") {
     return res.status(200).json({
       results: facilities.length,
       totalFacilities,
@@ -67,35 +68,32 @@ exports.getFacilities = asyncHandler(async (req, res) => {
     });
   }
 
-  // ✅ فلترة حسب العضوية (لو المستخدم مش أدمن)
-  let userPlanId = null;
-  if (req.user) {
-    const subscription = await SubscripeMembership.findOne({
-      user: req.user._id,
-      status: "active",
-    }).populate("plan");
+  // ✅ نحاول نجيب خطة المستخدم (لو عنده)
+  const subscription = await SubscripeMembership.findOne({
+    user: req.user._id,
+    status: "active",
+  }).populate("plan");
 
-    if (subscription) userPlanId = subscription.plan._id.toString();
-  }
+  let userPlanId = subscription?.plan?._id?.toString();
 
-  // ✅ Mode فلترة (vip/general)
+  // ✅ mode = vip/general
   if (req.query.mode === "vip") {
-    facilities = facilities.filter(facility =>
-      facility.allowedPlans.some(p => p.name.toLowerCase().includes("vip"))
+    facilities = facilities.filter(f =>
+      f.allowedPlans.some(p => p.name?.toLowerCase().includes("vip"))
     );
   } else if (req.query.mode === "general") {
-    facilities = facilities.filter(facility => facility.allowedPlans.length === 0);
+    facilities = facilities.filter(f => f.allowedPlans.length === 0);
   }
 
-  // ✅ لو المستخدم عنده خطة معينة، رجع له بس المسموح بيه
+  // ✅ لو المستخدم عنده plan → رجعله المسموح له بس
   if (userPlanId) {
-    facilities = facilities.filter(facility =>
-      facility.allowedPlans.length === 0 ||
-      facility.allowedPlans.some(p => p._id.toString() === userPlanId)
+    facilities = facilities.filter(f =>
+      f.allowedPlans.length === 0 ||
+      f.allowedPlans.some(p => p._id.toString() === userPlanId)
     );
   } else {
-    // لو مفيش اشتراك، رجع الحاجات العامة فقط
-    facilities = facilities.filter(facility => facility.allowedPlans.length === 0);
+    // لو ملوش plan → رجع العامة بس
+    facilities = facilities.filter(f => f.allowedPlans.length === 0);
   }
 
   res.status(200).json({
@@ -106,7 +104,7 @@ exports.getFacilities = asyncHandler(async (req, res) => {
     hasNextPage: page < totalPages,
     hasPrevPage: page > 1,
     data: facilities,
-  });
+  });
 });
 
 
