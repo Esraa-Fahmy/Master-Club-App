@@ -34,7 +34,8 @@ exports.resizeFacilityImages = asyncHandler(async (req, res, next) => {
   next();
 });
 
-// ✅ Get all facilities (with pagination, filter, VIP/general mode)
+
+// ✅ Get all facilities (with optional filtering)
 exports.getFacilities = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -53,35 +54,48 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   const totalFacilities = await Facility.countDocuments(filter);
   const totalPages = Math.ceil(totalFacilities / limit);
 
-  // ✅ General
-  if (req.query.mode === "general") {
-    facilities = facilities.filter((f) => f.allowedPlans.length === 0);
+  // ✅ لو المستخدم أدمن → يرجع الكل بدون فلترة
+  if (req.user && req.user.role === "admin") {
+    return res.status(200).json({
+      results: facilities.length,
+      totalFacilities,
+      totalPages,
+      currentPage: page,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+      data: facilities,
+    });
   }
 
-  // ✅ VIP
-  if (req.query.mode === "vip") {
-    facilities = facilities.filter((f) =>
-      f.allowedPlans.some((p) => p.name.toLowerCase() === "vip")
-    );
-  }
-
-  // ✅ Filter by user plan
+  // ✅ فلترة حسب العضوية (لو المستخدم مش أدمن)
+  let userPlanId = null;
   if (req.user) {
     const subscription = await SubscripeMembership.findOne({
       user: req.user._id,
       status: "active",
     }).populate("plan");
 
-    if (subscription) {
-      const userPlanId = subscription.plan._id.toString();
-      facilities = facilities.filter(
-        (f) =>
-          f.allowedPlans.length === 0 ||
-          f.allowedPlans.some((p) => p._id.toString() === userPlanId)
-      );
-    } else {
-      facilities = [];
-    }
+    if (subscription) userPlanId = subscription.plan._id.toString();
+  }
+
+  // ✅ Mode فلترة (vip/general)
+  if (req.query.mode === "vip") {
+    facilities = facilities.filter(facility =>
+      facility.allowedPlans.some(p => p.name.toLowerCase().includes("vip"))
+    );
+  } else if (req.query.mode === "general") {
+    facilities = facilities.filter(facility => facility.allowedPlans.length === 0);
+  }
+
+  // ✅ لو المستخدم عنده خطة معينة، رجع له بس المسموح بيه
+  if (userPlanId) {
+    facilities = facilities.filter(facility =>
+      facility.allowedPlans.length === 0 ||
+      facility.allowedPlans.some(p => p._id.toString() === userPlanId)
+    );
+  } else {
+    // لو مفيش اشتراك، رجع الحاجات العامة فقط
+    facilities = facilities.filter(facility => facility.allowedPlans.length === 0);
   }
 
   res.status(200).json({
@@ -95,6 +109,7 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   });
 });
 
+
 // ✅ Get single facility
 exports.getFacility = asyncHandler(async (req, res, next) => {
   const facility = await Facility.findById(req.params.id)
@@ -106,9 +121,10 @@ exports.getFacility = asyncHandler(async (req, res, next) => {
   res.status(200).json({ data: facility });
 });
 
+
 // ✅ Create facility
 exports.createFacility = asyncHandler(async (req, res, next) => {
-  // 🧩 Fix FormData stringified arrays
+  // 🧩 Parse FormData
   if (req.body.allowedPlans && typeof req.body.allowedPlans === "string") {
     try {
       req.body.allowedPlans = JSON.parse(req.body.allowedPlans);
@@ -125,30 +141,27 @@ exports.createFacility = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // ✅ Validate category exists
+  // ✅ Validate category
   if (req.body.category) {
     const categoryExists = await Category.findById(req.body.category);
     if (!categoryExists)
       return next(new ApiError("Invalid category ID — category not found", 400));
   }
 
-  // ✅ Validate plans exist
-  if (req.body.allowedPlans && req.body.allowedPlans.length > 0) {
-    const foundPlans = await MembershipPlan.find({
-      _id: { $in: req.body.allowedPlans },
-    });
-    if (foundPlans.length !== req.body.allowedPlans.length) {
+  // ✅ Validate plans
+  if (req.body.allowedPlans?.length > 0) {
+    const foundPlans = await MembershipPlan.find({ _id: { $in: req.body.allowedPlans } });
+    if (foundPlans.length !== req.body.allowedPlans.length)
       return next(new ApiError("One or more plan IDs are invalid", 400));
-    }
   }
 
   const facility = await Facility.create(req.body);
   res.status(201).json({ data: facility });
 });
 
+
 // ✅ Update facility
 exports.updateFacility = asyncHandler(async (req, res, next) => {
-  // نفس إصلاح الفورم داتا زي create
   if (req.body.allowedPlans && typeof req.body.allowedPlans === "string") {
     try {
       req.body.allowedPlans = JSON.parse(req.body.allowedPlans);
@@ -165,13 +178,12 @@ exports.updateFacility = asyncHandler(async (req, res, next) => {
     }
   }
 
-  const facility = await Facility.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-  });
-
+  const facility = await Facility.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!facility) return next(new ApiError("Facility not found", 404));
+
   res.status(200).json({ data: facility });
 });
+
 
 // ✅ Delete facility
 exports.deleteFacility = asyncHandler(async (req, res, next) => {
