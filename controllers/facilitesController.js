@@ -55,18 +55,6 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   const totalFacilities = await Facility.countDocuments(filter);
   const totalPages = Math.ceil(totalFacilities / limit);
 
-  // ✅ لو مفيش يوزر أو أدمن → رجع الكل
-  if (!req.user || req.user.role === "admin") {
-    return res.status(200).json({
-      results: facilities.length,
-      totalFacilities,
-      totalPages,
-      currentPage: page,
-      hasNextPage: page < totalPages,
-      hasPrevPage: page > 1,
-      data: facilities,
-    });
-  }
 
   // ✅ نحاول نجيب خطة المستخدم (لو عنده)
   const subscription = await SubscripeMembership.findOne({

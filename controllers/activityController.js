@@ -130,44 +130,74 @@ exports.createActivity = asyncHandler(async (req, res) => {
 
 
 // ====== Update Activity ======
-// ====== Update Activity ======
 exports.updateActivity = asyncHandler(async (req, res, next) => {
-  const updateOps = {};
-
-  // تأكدي إن allowedPlans Array
-  if (req.body.allowedPlans) {
-    let plans = req.body.allowedPlans;
-
-    if (typeof plans === "string") {
-      try {
-        plans = JSON.parse(plans); // يحول string إلى Array
-      } catch (err) {
-        return next(new ApiError("allowedPlans must be an array", 400));
-      }
+  // 🧩 لو allowedPlans جاي كـ string → نحوله Array
+  if (req.body.allowedPlans && typeof req.body.allowedPlans === "string") {
+    try {
+      req.body.allowedPlans = JSON.parse(req.body.allowedPlans);
+    } catch {
+      req.body.allowedPlans = [];
     }
-
-    updateOps.$addToSet = { allowedPlans: { $each: plans } };
   }
 
-  if (req.body.removePlans) {
-    let remove = req.body.removePlans;
-
-    if (typeof remove === "string") {
-      try {
-        remove = JSON.parse(remove);
-      } catch (err) {
-        return next(new ApiError("removePlans must be an array", 400));
-      }
+  // 🧩 لو removePlans جاي كـ string → نحوله Array
+  if (req.body.removePlans && typeof req.body.removePlans === "string") {
+    try {
+      req.body.removePlans = JSON.parse(req.body.removePlans);
+    } catch {
+      req.body.removePlans = [];
     }
-
-    updateOps.$pull = { allowedPlans: { $in: remove } };
   }
 
-  const a = await Activity.findByIdAndUpdate(req.params.id, updateOps, { new: true });
+  // 🧩 نحول القيم اللي بتتبعت من form-data كنصوص للي نوعها الحقيقي
+  if (req.body.isEvent !== undefined) {
+    req.body.isEvent = req.body.isEvent === "true" || req.body.isEvent === true;
+  }
 
-  if (!a) return next(new ApiError("Activity not found", 404));
-  res.status(200).json({ data: a });
+  if (req.body.isVip !== undefined) {
+    req.body.isVip = req.body.isVip === "true" || req.body.isVip === true;
+  }
+
+  if (req.body.isRecommended !== undefined) {
+    req.body.isRecommended = req.body.isRecommended === "true" || req.body.isRecommended === true;
+  }
+
+  if (req.body.requiresPlayers !== undefined) {
+    req.body.requiresPlayers =
+      req.body.requiresPlayers === "true" || req.body.requiresPlayers === true;
+  }
+
+  // 🧩 نحول التواريخ
+  if (req.body.startDate) req.body.startDate = new Date(req.body.startDate);
+  if (req.body.endDate) req.body.endDate = new Date(req.body.endDate);
+
+  // 🧩 نبني object التحديث
+  const updateOps = { ...req.body };
+
+  // 🧩 نضيف allowedPlans (لو موجود)
+  if (req.body.allowedPlans && req.body.allowedPlans.length > 0) {
+    updateOps.$addToSet = { allowedPlans: { $each: req.body.allowedPlans } };
+  }
+
+  // 🧩 نحذف من allowedPlans (لو موجود)
+  if (req.body.removePlans && req.body.removePlans.length > 0) {
+    updateOps.$pull = { allowedPlans: { $in: req.body.removePlans } };
+  }
+
+  // 🧩 نعمل التحديث
+  const updated = await Activity.findByIdAndUpdate(req.params.id, updateOps, {
+    new: true,
+    runValidators: true,
+  })
+    .populate("category", "name type")
+    .populate("subCategory", "name category")
+    .populate("allowedPlans", "name type");
+
+  if (!updated) return next(new ApiError("Activity not found", 404));
+
+  res.status(200).json({ data: updated });
 });
+
 
 
 // ====== Delete Activity ======
