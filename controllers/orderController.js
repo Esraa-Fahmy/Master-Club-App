@@ -5,6 +5,8 @@ const Coupon = require("../models/promoCodeModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
 const cartModel = require("../models/cartModel");
+const offersModel = require("../models/offersModel");
+
 
 exports.createOrder = asyncHandler(async (req, res, next) => {
   const { shippingAddress, paymentMethod, couponCode } = req.body;
@@ -26,29 +28,45 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
   const orderItems = [];
 
   for (const item of cart.items) {
-    if (!item.product) continue;
+    const product = item.product;
+    if (!product) continue;
 
-    if (item.quantity <= 0) {
-      return next(new ApiError("الكمية يجب أن تكون أكبر من صفر", 400));
-    }
+    if (item.quantity <= 0) return next(new ApiError("الكمية يجب أن تكون أكبر من صفر", 400));
+    if (product.stock < item.quantity) return next(new ApiError(`الكمية غير متاحة للمنتج: ${product.name}`, 400));
 
-    if (item.product.stock < item.quantity) {
-      return next(new ApiError(`الكمية غير متاحة للمنتج: ${item.product.name}`, 400));
-    }
-
-    totalPrice += item.product.price * item.quantity;
-    orderItems.push({
-      product: item.product._id,
-      quantity: item.quantity,
-      price: item.product.price,
+    // ✅ جلب أي عرض نشط على المنتج أو الكاتجوري
+    const offer = await offersModel.findOne({
+      isActive: true,
+      expiresAt: { $gt: new Date() },
+      $or: [
+        { products: product._id },
+        { category: product.category._id }
+      ]
     });
 
-    // خصم الكمية
-    item.product.stock -= item.quantity;
-    await item.product.save();
+    // السعر بعد العرض
+    let itemPrice = product.price;
+    if (offer) {
+      itemPrice = offer.discountType === "percentage"
+        ? product.price - (product.price * offer.discountValue / 100)
+        : product.price - offer.discountValue;
+    }
+
+    totalPrice += itemPrice * item.quantity;
+
+    orderItems.push({
+      product: product._id,
+      quantity: item.quantity,
+      price: itemPrice,
+      appliedOffer: offer || null // optional
+    });
+
+    // خصم المخزون
+    product.stock -= item.quantity;
+    await product.save();
   }
 
-  // التعامل مع الكوبون
+  // التعامل مع الكوبون بعد الخصم من العروض
   let discount = 0;
   if (couponCode) {
     const coupon = await Coupon.findOne({ code: couponCode, isActive: true });
