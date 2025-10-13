@@ -14,8 +14,8 @@ router.use(protect);
 
 router
   .route("/")
-  .post(createOrder) // إنشاء أوردر
-  .get(getUserOrders); // جلب أوردرات المستخدم
+  .post(allowedTo('user'), createOrder) // إنشاء أوردر
+  .get( allowedTo('user'), getUserOrders); // جلب أوردرات المستخدم
 
 // ✅ الأدمن فقط يقدر يعدل حالة الأوردر
 router.patch(

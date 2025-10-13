@@ -4,15 +4,11 @@ const Product = require("../models/productModel");
 const Coupon = require("../models/promoCodeModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
+const cartModel = require("../models/cartModel");
 
-// ✅ إنشاء أوردر
 exports.createOrder = asyncHandler(async (req, res, next) => {
-  const { items, shippingAddress, paymentMethod, couponCode } = req.body;
+  const { shippingAddress, paymentMethod, couponCode } = req.body;
 
-  // 1. التحقق من وجود بيانات أساسية
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return next(new ApiError("الطلب فارغ", 400));
-  }
   if (!shippingAddress || !shippingAddress.label || !shippingAddress.details) {
     return next(new ApiError("عنوان الشحن مطلوب", 400));
   }
@@ -20,57 +16,54 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
     return next(new ApiError("طريقة الدفع مطلوبة", 400));
   }
 
+  // جلب الكارت
+  const cart = await cartModel.findOne({ user: req.user._id }).populate("items.product");
+  if (!cart || cart.items.length === 0) {
+    return next(new ApiError("الكارت فارغ", 400));
+  }
+
   let totalPrice = 0;
   const orderItems = [];
 
-  for (const it of items) {
-    if (!mongoose.Types.ObjectId.isValid(it.product)) {
-      return next(new ApiError(`معرف المنتج غير صالح: ${it.product}`, 400));
-    }
+  for (const item of cart.items) {
+    if (!item.product) continue;
 
-    const product = await Product.findById(it.product);
-    if (!product) return next(new ApiError("المنتج غير موجود", 404));
-
-    if (it.quantity <= 0) {
+    if (item.quantity <= 0) {
       return next(new ApiError("الكمية يجب أن تكون أكبر من صفر", 400));
     }
 
-    if (product.stock < it.quantity) {
-      return next(new ApiError(`الكمية غير متاحة للمنتج: ${product.name}`, 400));
+    if (item.product.stock < item.quantity) {
+      return next(new ApiError(`الكمية غير متاحة للمنتج: ${item.product.name}`, 400));
     }
 
-    totalPrice += product.price * it.quantity;
+    totalPrice += item.product.price * item.quantity;
     orderItems.push({
-      product: product._id,
-      quantity: it.quantity,
-      price: product.price,
+      product: item.product._id,
+      quantity: item.quantity,
+      price: item.product.price,
     });
 
     // خصم الكمية
-    product.stock -= it.quantity;
-    await product.save();
+    item.product.stock -= item.quantity;
+    await item.product.save();
   }
 
-  // 2. الكوبون
+  // التعامل مع الكوبون
   let discount = 0;
   if (couponCode) {
     const coupon = await Coupon.findOne({ code: couponCode, isActive: true });
     if (!coupon) return next(new ApiError("الكوبون غير موجود", 400));
-    if (coupon.expiresAt < new Date()) {
-      return next(new ApiError("الكوبون منتهي الصلاحية", 400));
-    }
+    if (coupon.expiresAt < new Date()) return next(new ApiError("الكوبون منتهي الصلاحية", 400));
 
-    if (coupon.discountType === "percentage") {
-      discount = (totalPrice * coupon.discountValue) / 100;
-    } else {
-      discount = coupon.discountValue;
-    }
+    discount = coupon.discountType === "percentage"
+      ? (totalPrice * coupon.discountValue) / 100
+      : coupon.discountValue;
   }
 
   const finalPrice = totalPrice - discount;
   if (finalPrice < 0) return next(new ApiError("الخصم أكبر من السعر", 400));
 
-  // 3. إنشاء الأوردر
+  // إنشاء الأوردر
   const order = await Order.create({
     user: req.user._id,
     items: orderItems,
@@ -80,6 +73,13 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
     discount,
     finalPrice,
   });
+
+  // مسح الكارت بعد إنشاء الأوردر
+  cart.items = [];
+  cart.totalPrice = 0;
+  cart.discount = 0;
+  cart.finalPrice = 0;
+  await cart.save();
 
   res.status(201).json({ status: "success", data: order });
 });
