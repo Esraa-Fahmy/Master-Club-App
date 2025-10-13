@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
 const { uploadMixOfImages } = require('../midlewares/uploadImageMiddleWare');
 const fs = require('fs');
+const offersModel = require("../models/offersModel");
 
 // ====== Image Upload & Resize ======
 exports.uploadProductImages = uploadMixOfImages([
@@ -98,11 +99,37 @@ exports.getProducts = asyncHandler(async (req, res) => {
 });
 
 // ✅ Get Single Product
+// controllers/productController.js
 exports.getProduct = asyncHandler(async (req, res, next) => {
   const product = await Product.findById(req.params.id).populate("category");
   if (!product) return next(new ApiError("Product not found", 404));
-  res.status(200).json({ data: product });
+
+  // تطبيق أي عرض نشط
+  const offer = await offersModel.findOne({
+    isActive: true,
+    expiresAt: { $gt: new Date() },
+    $or: [
+      { products: product._id },
+      { category: product.category._id }
+    ]
+  });
+
+  let finalPrice = product.price;
+  if (offer) {
+    finalPrice = offer.discountType === "percentage"
+      ? product.price - (product.price * offer.discountValue / 100)
+      : product.price - offer.discountValue;
+  }
+
+  res.status(200).json({
+    data: {
+      ...product.toObject(),
+      finalPrice,
+      appliedOffer: offer || null
+    }
+  });
 });
+
 
 // ✅ Update Product
 exports.updateProduct = asyncHandler(async (req, res, next) => {

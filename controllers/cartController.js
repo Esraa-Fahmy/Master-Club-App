@@ -3,6 +3,7 @@ const Cart = require("../models/cartModel");
 const Product = require("../models/productModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
+const offersModel = require("../models/offersModel");
 
 // 🛒 Add to Cart
 exports.addToCart = asyncHandler(async (req, res, next) => {
@@ -43,13 +44,42 @@ exports.addToCart = asyncHandler(async (req, res, next) => {
   res.status(200).json({ message: "Item added to cart", data: cart });
 });
 
-// 🛒 Get Cart
+//const Offer = require("../models/offersModel");
+
+// 🛒 Get Cart with active offers
 exports.getCart = asyncHandler(async (req, res, next) => {
   const cart = await Cart.findOne({ user: req.user._id }).populate("items.product");
 
   if (!cart || cart.items.length === 0) {
     return next(new ApiError("Cart is empty", 404));
   }
+
+  // تحديث أسعار المنتجات حسب العروض
+  for (const item of cart.items) {
+    const product = item.product;
+
+    const offer = await offersModel.findOne({
+      isActive: true,
+      expiresAt: { $gt: new Date() },
+      $or: [
+        { products: product._id },
+        { category: product.category._id }
+      ]
+    });
+
+    // السعر بعد الخصم
+    item.price = product.price;
+    if (offer) {
+      item.price = offer.discountType === "percentage"
+        ? product.price - (product.price * offer.discountValue / 100)
+        : product.price - offer.discountValue;
+      item.appliedOffer = offer; // optional, لو عايز تبعت بيانات العرض
+    }
+  }
+
+  // إعادة حساب الكارت
+  cart.totalPrice = cart.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  cart.finalPrice = cart.totalPrice - (cart.discount || 0);
 
   res.status(200).json({ data: cart });
 });
