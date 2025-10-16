@@ -34,31 +34,45 @@ exports.resizeImage = asyncHandler(async (req, res, next) => {
   next();
 });
 
-exports.getCategories = asyncHandler(async (req, res) => {
-    const page = req.query.page * 1 || 1;
-    const limit = req.query.limit * 1 || 6;
-    const skip = (page - 1) * limit;
+exports.getCategories = asyncHandler(async (req, res, next) => {
+  const page = req.query.page * 1 || 1;
+  const limit = req.query.limit * 1 || 6;
+  const skip = (page - 1) * limit;
 
-    // فلترة البحث باسم الكاتجوري
-    const searchQuery = req.query.search ? {
-        name: { $regex: req.query.search, $options: "i" }
-    } : {};
+  // فلترة البحث
+  const searchQuery = req.query.search ? {
+    name: { $regex: req.query.search, $options: "i" }
+  } : {};
 
-    // فلترة type لو موجودة في query
-    const typeQuery = req.query.type ? { type: req.query.type } : {};
+  // فلترة النوع
+  const typeQuery = req.query.type ? { type: req.query.type } : {};
 
-    // دمج الفلاتر مع بعض
-    const filter = { ...searchQuery, ...typeQuery };
+  // دمج الفلاتر
+  const filter = { ...searchQuery, ...typeQuery };
 
-    const categories = await Category.find(filter)
-        .skip(skip)
-        .limit(limit);
+  // هنا بقى بنجيب الكاتجوري ومعاها الساب كاتجوري
+  const categories = await Category.find(filter)
+    .skip(skip)
+    .limit(limit)
+    .lean(); // علشان نقدر نضيف subCategories يدوي
 
-    res.status(200).json({
-        results: categories.length,
-        page,
-        data: categories
-    });
+  // نجيب كل الـ subCategories اللي ليها علاقة بالكاتجوري دي
+  const categoryIds = categories.map(cat => cat._id);
+  const subCategories = await require("../models/subCategoryModel")
+    .find({ category: { $in: categoryIds } })
+    .select("name image category");
+
+  // نربط كل كاتجوري بالساب كاتجوريز بتاعتها
+  const categoriesWithSubs = categories.map(cat => {
+    const relatedSubs = subCategories.filter(sub => sub.category.toString() === cat._id.toString());
+    return { ...cat, subCategories: relatedSubs };
+  });
+
+  res.status(200).json({
+    results: categoriesWithSubs.length,
+    page,
+    data: categoriesWithSubs
+  });
 });
 
 
