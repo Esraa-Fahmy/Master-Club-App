@@ -1,7 +1,5 @@
 const nodemailer = require('nodemailer');
 
-// Nodemailer
-
 const sendEmail = async (options) => {
   const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
@@ -16,19 +14,14 @@ const sendEmail = async (options) => {
     },
   });
 
+  const mailOpts = {
+    from: `Master Club APP<${process.env.EMAIL_USER}>`,
+    to: options.email,
+    subject: options.subject,
+    text: options.message,
+    html: options.html || options.message,
+  };
 
-  
-
- // 2) Define email options (like from, to, subject, email content)
- const mailOpts = {
-  from: 'Master-Club App <esraaalrassas@gmail.com>',
-  to: options.email,
-  subject: options.subject,
-  text: options.message, 
-  html: options.html || options.message, // يدعم HTML، ولو مش موجود يستخدم النص العادي
-};
-
-  // 3) Send email
   await transporter.sendMail(mailOpts);
 };
 

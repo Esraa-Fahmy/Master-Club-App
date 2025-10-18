@@ -91,10 +91,21 @@ exports.login = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     status: "success",
     token,
+    data: {
     user: {
-      ...userData.toObject(),
-      hasActiveMembership,
+      _id: user._id,
+      userName: user.userName,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      profileImg: user.profileImg,
+      membershipSubscription: user.membershipSubscription,
+      language: user.language,
+      points: user.points,
+      wishlist: user.wishlist,
+      devices: user.devices,
     },
+  },
   });
 });
 
