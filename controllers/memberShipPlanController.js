@@ -15,12 +15,11 @@ exports.createPlan = asyncHandler(async (req, res) => {
 exports.getPlans = asyncHandler(async (req, res) => {
   const { name } = req.query;
 
-  // نجهز الفلتر الفاضي
+  // تجهيز الفلتر
   const filter = {};
 
-  // لو فيه name في الكويري، نضيفه للفيلتر
+  // لو فيه name في الكويري، نفلتر بيه
   if (name) {
-    // نعمل lowercase عشان نضمن التطابق مع القيم في enum
     const allowedNames = ["general", "vip"];
     const lowerName = name.toLowerCase();
 
@@ -31,28 +30,26 @@ exports.getPlans = asyncHandler(async (req, res) => {
       });
     }
 
-    // نحط الاسم في الفلتر
     filter.name = lowerName;
   }
 
-  // نطبق الفلتر هنا في find()
+  // نجيب الداتا بناءً على الفلتر
   const plans = await MembershipPlan.find(filter).select(
     "name type price description permissions"
   );
 
+  // القيم المسموحة من enum
   const nameEnumValues = MembershipPlan.schema.path("name").enumValues;
+  const typeEnumValues = MembershipPlan.schema.path("type").enumValues;
 
   res.status(200).json({
     status: "success",
     results: plans.length,
-    enums: { name: nameEnumValues },
-    data: {
-      ...plans.toObject(),
-      enums: {
-        name: ["general", "vip"],
-        type: ["monthly", "yearly"],
-      },
-    }
+    enums: {
+      name: nameEnumValues, // ["general", "vip"]
+      type: typeEnumValues, // ["monthly", "yearly"]
+    },
+    data: plans, // مصفوفة الخطط كما هي
   });
 });
 
@@ -63,13 +60,16 @@ exports.getPlan = asyncHandler(async (req, res, next) => {
   const plan = await MembershipPlan.findById(req.params.id);
   if (!plan) return next(new ApiError("Plan not found", 404));
 
+  const nameEnumValues = MembershipPlan.schema.path("name").enumValues;
+  const typeEnumValues = MembershipPlan.schema.path("type").enumValues;
+
   res.status(200).json({
     status: "success",
     data: {
       ...plan.toObject(),
       enums: {
-        name: ["general", "vip"],
-        type: ["monthly", "yearly"],
+        name: nameEnumValues,
+        type: typeEnumValues,
       },
     },
   });
