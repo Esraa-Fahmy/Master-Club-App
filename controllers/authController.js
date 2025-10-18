@@ -30,6 +30,9 @@ exports.signup = asyncHandler(async (req, res, next) => {
 // @desc    Login
 // @route   POST /api/v1/auth/login
 // @access  Public
+// @desc    Login
+// @route   POST /api/v1/auth/login
+// @access  Public
 exports.login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -42,17 +45,13 @@ exports.login = asyncHandler(async (req, res, next) => {
 
   // بيانات الجهاز من الهيدر
   const userAgent = req.headers["user-agent"] || "unknown";
-  const ip = req.ip || req.connection.remoteAddress;
+  const ip = req.ip || req.connection?.remoteAddress;
 
-  // نجيب الدولة والمدينة من الـ IP
   const geo = geoip.lookup(ip);
   const country = geo?.country || "Unknown";
   const city = geo?.city || "Unknown";
 
-  // نحدد مفتاح للجهاز
   const deviceKey = `${userAgent}-${ip}`;
-
-  // نشوف هل الجهاز ده موجود قبل كده؟
   const existingDevice = user.devices.find(
     (d) => `${d.deviceType}-${d.ip}` === deviceKey
   );
@@ -77,7 +76,26 @@ exports.login = asyncHandler(async (req, res, next) => {
 
   await user.save();
 
-  res.status(200).json({ token });
+  // ⚡ رجّع البيانات بدون paymentMethods
+  const userData = await User.findById(user._id)
+    .select("-password -paymentMethods -devices")
+    .populate({
+      path: "membershipSubscription",
+      select: "status startDate endDate",
+    });
+
+  const hasActiveMembership = userData.membershipSubscription?.some(
+    (m) => m.status === "active"
+  );
+
+  res.status(200).json({
+    status: "success",
+    token,
+    user: {
+      ...userData.toObject(),
+      hasActiveMembership,
+    },
+  });
 });
 
 
