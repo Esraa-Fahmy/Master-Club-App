@@ -46,7 +46,13 @@ exports.getPlans = asyncHandler(async (req, res) => {
     status: "success",
     results: plans.length,
     enums: { name: nameEnumValues },
-    data: plans,
+    data: {
+      ...plans.toObject(),
+      enums: {
+        name: ["general", "vip"],
+        type: ["monthly", "yearly"],
+      },
+    }
   });
 });
 
