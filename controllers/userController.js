@@ -278,7 +278,6 @@ exports.removePaymentMethod = asyncHandler(async (req, res) => {
 
 // @desc    Get my membership details
 // @route   GET /api/v1/users/my-membership
-// @access  Private/User
 exports.getMyMembership = asyncHandler(async (req, res, next) => {
   // هات كل العضويات الخاصة باليوزر الحالي
   const memberships = await SubscriptionMemberShip.find({ user: req.user._id })
@@ -287,6 +286,10 @@ exports.getMyMembership = asyncHandler(async (req, res, next) => {
   if (!memberships || memberships.length === 0) {
     return next(new ApiError("No memberships found", 404));
   }
+
+  // 🧮 هات عدد الحجوزات (الأوردرز) الخاصة باليوزر ده
+  const user = await User.findById(req.user._id).populate("orders");
+  const totalBookings = user?.orders?.length || 0;
 
   // احسب usage لكل عضوية
   const now = new Date();
@@ -301,27 +304,28 @@ exports.getMyMembership = asyncHandler(async (req, res, next) => {
 
     return {
       id: membership._id,
-      subscriptionId: membership.subscriptionId, // ✅ ID المميز زي AH-245
+      subscriptionId: membership.subscriptionId,
       planName: membership.plan?.name,
       planType: membership.plan?.type,
       status: membership.status,
       startDate: membership.startDate,
       expiresAt: membership.expiresAt,
-      createdAt: membership.createdAt, // ✅ تاريخ الاشتراك نفسه
+      createdAt: membership.createdAt,
       visitsUsed: membership.visitsUsed || 0,
       points: membership.points || 0,
       usagePercent: usage ? usage.toFixed(2) : null,
-      rejectionReason: membership.rejectionReason || null, // لو مرفوض
+      rejectionReason: membership.rejectionReason || null,
     };
   });
 
+  // ✅ أرجع التوتال معاهم
   res.status(200).json({
     status: "success",
+    totalBookings, // 👈 الإجمالي الكلي للحجوزات
     results: formattedMemberships.length,
     data: formattedMemberships,
-  });
+  });
 });
-
 
 
 
