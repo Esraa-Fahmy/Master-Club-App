@@ -277,9 +277,8 @@ exports.removePaymentMethod = asyncHandler(async (req, res) => {
 // -------------------- Membership --------------------
 
 // @desc    Get my membership details
-// @route   GET /api/v1/users/my-membership
 exports.getMyMembership = asyncHandler(async (req, res, next) => {
-  // هات كل العضويات الخاصة باليوزر الحالي
+  // 🟡 هات كل العضويات الخاصة باليوزر الحالي
   const memberships = await SubscriptionMemberShip.find({ user: req.user._id })
     .populate("plan");
 
@@ -287,11 +286,16 @@ exports.getMyMembership = asyncHandler(async (req, res, next) => {
     return next(new ApiError("No memberships found", 404));
   }
 
-  // 🧮 هات عدد الحجوزات (الأوردرز) الخاصة باليوزر ده
+  // 🟡 هات عدد الحجوزات (orders)
   const user = await User.findById(req.user._id).populate("orders");
   const totalBookings = user?.orders?.length || 0;
 
-  // احسب usage لكل عضوية
+  // 🟡 احسب إجمالي النقاط (sum للـ points من كل عضوية)
+  const totalPoints = memberships.reduce((sum, membership) => {
+    return sum + (membership.points || 0);
+  }, 0);
+
+  // 🧮 احسب usage لكل عضوية
   const now = new Date();
   const formattedMemberships = memberships.map((membership) => {
     let usage = null;
@@ -318,15 +322,15 @@ exports.getMyMembership = asyncHandler(async (req, res, next) => {
     };
   });
 
-  // ✅ أرجع التوتال معاهم
+  // ✅ أرجع كل القيم المطلوبة
   res.status(200).json({
     status: "success",
-    totalBookings, // 👈 الإجمالي الكلي للحجوزات
+    totalBookings, // 👈 إجمالي عدد الأوردرات (الحجوزات)
+    totalPoints,   // 👈 إجمالي النقاط من كل العضويات
     results: formattedMemberships.length,
     data: formattedMemberships,
   });
 });
-
 
 
 
