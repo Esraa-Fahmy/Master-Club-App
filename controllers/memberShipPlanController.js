@@ -12,11 +12,28 @@ exports.createPlan = asyncHandler(async (req, res) => {
 
 // @desc Get all plans (lightweight)
 // @route GET /api/v1/membership-plans
-// @access Public
+/// GET /api/v1/plans?name=vip   أو  /api/v1/plans?name=general
 exports.getPlans = asyncHandler(async (req, res) => {
-  const plans = await MembershipPlan.find({}, "name description permissions");
+  const { name } = req.query; // نقرأ النوع من الكويري
 
-  // ⬅️ نجيب قيم enum المسموح بيها من الاسكيمة
+  // نجهز الفلتر
+  const filter = {};
+  if (name) {
+    // نتأكد إن الاسم اللي جاي valid (يا vip يا general)
+    const allowedNames = ["general", "vip"];
+    if (!allowedNames.includes(name.toLowerCase())) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Invalid plan name. Allowed values: vip or general",
+      });
+    }
+    filter.name = name.toLowerCase();
+  }
+
+  // نجيب الخطط بناءً على الفلتر
+  const plans = await MembershipPlan.find(filter, "name type price description permissions");
+
+  // نجيب القيم المسموح بيها في enum
   const nameEnumValues = MembershipPlan.schema.path("name").enumValues;
 
   res.status(200).json({
