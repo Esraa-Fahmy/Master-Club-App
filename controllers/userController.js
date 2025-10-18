@@ -355,32 +355,36 @@ exports.getMyDevices = asyncHandler(async (req, res, next) => {
 
 // DELETE /api/v1/users/my-devices/:deviceId
 exports.logoutDevice = asyncHandler(async (req, res, next) => {
-  const { deviceId } = req.params;
+  const user = req.user;
+  const token = req.token;
 
-  const user = await User.findByIdAndUpdate(
-    req.user._id,
-    { $pull: { devices: { deviceId } } },   // هنا بيشيل الجهاز اللي الـ id بتاعه اتبعت
-    { new: true }
+  // نحذف التوكن الحالي من الأجهزة
+  await User.updateOne(
+    { _id: user._id },
+    { $pull: { devices: { token } } }
   );
 
-  if (!user) return next(new ApiError("User not found", 404));
-
-  res.status(200).json({ message: "Device logged out successfully" });
+  res.status(200).json({
+    status: "success",
+    message: "تم تسجيل الخروج من هذا الجهاز بنجاح. التوكن أصبح غير صالح.",
+  });
 });
 
 
-
-// DELETE /api/v1/users/my-devices
+// 🚪 Logout from all devices
 exports.logoutAllDevices = asyncHandler(async (req, res, next) => {
-  const user = await User.findByIdAndUpdate(
-    req.user._id,
-    { $set: { devices: [] } },
-    { new: true }
+  const user = req.user;
+
+  // نحذف كل الأجهزة وبالتالي كل التوكنات
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { devices: [] } }
   );
 
-  if (!user) return next(new ApiError("User not found", 404));
-
-  res.status(200).json({ message: "Logged out from all devices" });
+  res.status(200).json({
+    status: "success",
+    message: "تم تسجيل الخروج من جميع الأجهزة. كل التوكنات أصبحت غير صالحة.",
+  });
 });
 
 

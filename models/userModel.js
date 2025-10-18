@@ -41,6 +41,8 @@ const userSchema = new mongoose.Schema(
       deviceType: String,
       os: String,
       ip: String,
+      country: String,
+      city: String,
       lastLogin: Date,
       token: String,
     }
