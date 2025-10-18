@@ -12,40 +12,43 @@ exports.createPlan = asyncHandler(async (req, res) => {
 
 // @desc Get all plans (lightweight)
 // @route GET /api/v1/membership-plans
-/// GET /api/v1/plans?name=vip   أو  /api/v1/plans?name=general
 exports.getPlans = asyncHandler(async (req, res) => {
-  const { name } = req.query; // نقرأ النوع من الكويري
+  const { name } = req.query;
 
-  // نجهز الفلتر
+  // نجهز الفلتر الفاضي
   const filter = {};
+
+  // لو فيه name في الكويري، نضيفه للفيلتر
   if (name) {
-    // نتأكد إن الاسم اللي جاي valid (يا vip يا general)
+    // نعمل lowercase عشان نضمن التطابق مع القيم في enum
     const allowedNames = ["general", "vip"];
-    if (!allowedNames.includes(name.toLowerCase())) {
+    const lowerName = name.toLowerCase();
+
+    if (!allowedNames.includes(lowerName)) {
       return res.status(400).json({
         status: "fail",
         message: "Invalid plan name. Allowed values: vip or general",
       });
     }
-    filter.name = name.toLowerCase();
+
+    // نحط الاسم في الفلتر
+    filter.name = lowerName;
   }
 
-  // نجيب الخطط بناءً على الفلتر
-  const plans = await MembershipPlan.find(filter, "name type price description permissions");
+  // نطبق الفلتر هنا في find()
+  const plans = await MembershipPlan.find(filter).select(
+    "name type price description permissions"
+  );
 
-  // نجيب القيم المسموح بيها في enum
   const nameEnumValues = MembershipPlan.schema.path("name").enumValues;
 
   res.status(200).json({
     status: "success",
     results: plans.length,
-    enums: {
-      name: nameEnumValues, // ["general", "vip"]
-    },
+    enums: { name: nameEnumValues },
     data: plans,
   });
 });
-
 
 // @desc Get single plan with full details
 // @route GET /api/v1/membership-plans/:id
