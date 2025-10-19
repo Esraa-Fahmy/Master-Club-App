@@ -9,6 +9,7 @@ const Order = require("../models/orderModel");
 const { uploadSingleImage } = require("../midlewares/uploadImageMiddleWare");
 const { createToken }= require("../utils/createToken");
 const SubscriptionMemberShip = require("../models/SubscriptionMemberShip");
+const bookingModel = require("../models/bookingModel");
 
 // 📸 Upload single image
 exports.uploadUserImage = uploadSingleImage('profileImg');
@@ -277,58 +278,35 @@ exports.removePaymentMethod = asyncHandler(async (req, res) => {
 // -------------------- Membership --------------------
 
 // @desc    Get my membership details
+
 exports.getMyMembership = asyncHandler(async (req, res, next) => {
-  // 🟡 هات كل العضويات الخاصة باليوزر الحالي
-  const memberships = await SubscriptionMemberShip.find({ user: req.user._id })
-    .populate("plan");
+  const user = await User.findById(req.user._id)
+    .populate({
+      path: "membershipSubscription",
+      select: "status startDate endDate",
+    });
 
-  if (!memberships || memberships.length === 0) {
-    return next(new ApiError("No memberships found", 404));
-  }
+  if (!user) return next(new ApiError("User not found", 404));
 
-  // 🟡 هات عدد الحجوزات (orders)
-  const user = await User.findById(req.user._id).populate("orders");
-  const totalBookings = user?.orders?.length || 0;
+  const hasActiveMembership = user.membershipSubscription?.some(
+    (m) => m.status === "active"
+  );
 
-  // 🟡 احسب إجمالي النقاط (sum للـ points من كل عضوية)
-  const totalPoints = memberships.reduce((sum, membership) => {
-    return sum + (membership.points || 0);
-  }, 0);
+  // 🧾 إجمالي الحجوزات
+  const totalBookings = await bookingModel.countDocuments({ user: user._id });
 
-  // 🧮 احسب usage لكل عضوية
-  const now = new Date();
-  const formattedMemberships = memberships.map((membership) => {
-    let usage = null;
-    if (membership.startDate && membership.expiresAt) {
-      const totalDuration =
-        membership.expiresAt.getTime() - membership.startDate.getTime();
-      const usedDuration = now.getTime() - membership.startDate.getTime();
-      usage = Math.min((usedDuration / totalDuration) * 100, 100);
-    }
-
-    return {
-      id: membership._id,
-      subscriptionId: membership.subscriptionId,
-      planName: membership.plan?.name,
-      planType: membership.plan?.type,
-      status: membership.status,
-      startDate: membership.startDate,
-      expiresAt: membership.expiresAt,
-      createdAt: membership.createdAt,
-      visitsUsed: membership.visitsUsed || 0,
-      points: membership.points || 0,
-      usagePercent: usage ? usage.toFixed(2) : null,
-      rejectionReason: membership.rejectionReason || null,
-    };
-  });
-
-  // ✅ أرجع كل القيم المطلوبة
   res.status(200).json({
     status: "success",
-    totalBookings, // 👈 إجمالي عدد الأوردرات (الحجوزات)
-    totalPoints,   // 👈 إجمالي النقاط من كل العضويات
-    results: formattedMemberships.length,
-    data: formattedMemberships,
+    data: {
+      user: {
+        _id: user._id,
+        userName: user.userName,
+        email: user.email,
+        membershipSubscription: user.membershipSubscription,
+        hasActiveMembership,
+        totalBookings, // ✅ الرقم اللي محتاجاه
+      },
+    },
   });
 });
 

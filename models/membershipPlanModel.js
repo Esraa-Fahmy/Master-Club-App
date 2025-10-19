@@ -13,10 +13,12 @@ const membershipPlanSchema = new mongoose.Schema(
       type: String,
       enum: ["monthly", "yearly"],
     },
+    memberShipDescripe: String,
     price: {
       type: String,
       required: true,
     },
+    priceAdvantage: String,
     permissions: {
       type: [String],
       default: [],

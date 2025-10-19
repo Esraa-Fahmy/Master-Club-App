@@ -104,6 +104,7 @@ exports.login = asyncHandler(async (req, res, next) => {
       points: user.points,
       wishlist: user.wishlist,
       devices: user.devices,
+      hasActiveMembership,
     },
   },
   });

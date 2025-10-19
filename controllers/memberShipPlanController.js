@@ -15,10 +15,8 @@ exports.createPlan = asyncHandler(async (req, res) => {
 exports.getPlans = asyncHandler(async (req, res) => {
   const { name } = req.query;
 
-  // تجهيز الفلتر
   const filter = {};
 
-  // لو فيه name في الكويري، نفلتر بيه
   if (name) {
     const allowedNames = ["general", "vip"];
     const lowerName = name.toLowerCase();
@@ -33,12 +31,11 @@ exports.getPlans = asyncHandler(async (req, res) => {
     filter.name = lowerName;
   }
 
-  // نجيب الداتا بناءً على الفلتر
+  // هنا أضفنا durationDays
   const plans = await MembershipPlan.find(filter).select(
-    "name type price description permissions"
+    "name type memberShipDescripe price priceAdvantage description permissions durationDays"
   );
 
-  // القيم المسموحة من enum
   const nameEnumValues = MembershipPlan.schema.path("name").enumValues;
   const typeEnumValues = MembershipPlan.schema.path("type").enumValues;
 
@@ -46,12 +43,13 @@ exports.getPlans = asyncHandler(async (req, res) => {
     status: "success",
     results: plans.length,
     enums: {
-      name: nameEnumValues, // ["general", "vip"]
-      type: typeEnumValues, // ["monthly", "yearly"]
+      name: nameEnumValues,
+      type: typeEnumValues,
     },
-    data: plans, // مصفوفة الخطط كما هي
+    data: plans,
   });
 });
+
 
 // @desc Get single plan with full details
 // @route GET /api/v1/membership-plans/:id
