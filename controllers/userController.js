@@ -277,9 +277,9 @@ exports.removePaymentMethod = asyncHandler(async (req, res) => {
 // -------------------- Membership --------------------
 
 // @desc    Get my membership details
-// @desc    Get my membership details (with full order stats)
+const Booking = require("../models/bookingModel");
+
 exports.getMyMembership = asyncHandler(async (req, res, next) => {
-  // 🟡 هات كل العضويات الخاصة باليوزر الحالي
   const memberships = await SubscriptionMemberShip.find({ user: req.user._id })
     .populate("plan");
 
@@ -287,29 +287,25 @@ exports.getMyMembership = asyncHandler(async (req, res, next) => {
     return next(new ApiError("No memberships found", 404));
   }
 
-  // 🟡 هات كل الأوردرات الخاصة باليوزر (مش بس completed)
-  const user = await User.findById(req.user._id).populate("orders");
+  // ✅ هات كل الحجوزات الخاصة باليوزر
+  const bookings = await Booking.find({ user: req.user._id });
 
-  if (!user) return next(new ApiError("User not found", 404));
+  // 🟢 إجمالي الحجوزات بكل الحالات
+  const totalBookings = bookings.length;
 
-  const orders = user.orders || [];
-
-  // 🟡 عدد الحجوزات الكلي
-  const totalBookings = orders.length;
-
-  // 🟡 حساب عدد الحجوزات حسب الحالة
-  const orderStatusCounts = orders.reduce((acc, order) => {
-    const status = order.status || "unknown";
-    acc[status] = (acc[status] || 0) + 1;
+  // 🟢 عدد الحجوزات حسب الحالة
+  const bookingStatusCounts = bookings.reduce((acc, booking) => {
+    acc[booking.status] = (acc[booking.status] || 0) + 1;
     return acc;
   }, {});
 
-  // 🟡 إجمالي النقاط من كل العضويات
-  const totalPoints = memberships.reduce((sum, membership) => {
-    return sum + (membership.points || 0);
-  }, 0);
+  // 🟢 عدد الزيارات (كل الحجزات اللي خلصت)
+  const totalVisits = bookings.filter(b => b.status === "completed").length;
 
-  // 🧮 احسب usage لكل عضوية
+  // 🟢 إجمالي النقاط من العضويات
+  const totalPoints = memberships.reduce((sum, m) => sum + (m.points || 0), 0);
+
+  // 🧮 تجهيز بيانات العضويات
   const now = new Date();
   const formattedMemberships = memberships.map((membership) => {
     let usage = null;
@@ -336,18 +332,16 @@ exports.getMyMembership = asyncHandler(async (req, res, next) => {
     };
   });
 
-  // ✅ أرجع كل القيم المطلوبة (من غير حذف أي داتا قديمة)
   res.status(200).json({
     status: "success",
-    totalBookings,         // إجمالي كل الأوردرات
-    orderStatusCounts,     // عدد كل حالة أوردر
+    totalBookings,         // كل الحجوزات
+    bookingStatusCounts,   // عدد كل حالة
+    totalVisits,           // عدد الزيارات (completed)
     totalPoints,           // إجمالي النقاط
     results: formattedMemberships.length,
     data: formattedMemberships,
   });
 });
-
-
 
 // -------------------- Orders --------------------
 
