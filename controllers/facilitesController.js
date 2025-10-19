@@ -35,7 +35,6 @@ exports.resizeFacilityImages = asyncHandler(async (req, res, next) => {
 });
 
 
-// ✅ Get all facilities (with optional filtering)
 exports.getFacilities = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -45,7 +44,14 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   if (req.query.category) filter.category = req.query.category;
   if (req.query.search) filter.name = { $regex: req.query.search, $options: "i" };
 
-  // 🟢 نجيب كل الفاسيلتيز
+  // 🧩 لو فيها فلترة بـ plan (vip / general)
+  if (req.query.plan) {
+    const plan = req.query.plan.toLowerCase();
+    const plans = await MembershipPlan.find({ name: plan });
+    if (plans.length > 0) filter.allowedPlans = { $in: plans.map(p => p._id) };
+  }
+
+  // 🟢 نجيب الفاسيلتيز
   let facilities = await Facility.find(filter)
     .skip(skip)
     .limit(limit)
@@ -55,7 +61,7 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   const totalFacilities = await Facility.countDocuments(filter);
   const totalPages = Math.ceil(totalFacilities / limit);
 
-  // 🟢 لو المستخدم Admin → يشوف ويحجز كل حاجة
+  // 🧩 لو المستخدم أدمن → يشوف كل حاجة عادي
   if (req.user.role === "admin") {
     const adminFacilities = facilities.map(f => ({
       ...f.toObject(),
@@ -74,33 +80,28 @@ exports.getFacilities = asyncHandler(async (req, res) => {
     });
   }
 
-  // 🟢 نجيب عضوية المستخدم (لو موجودة)
+  // 🧩 غير الأدمن → لازم يكون عنده عضوية active
   const subscription = await SubscripeMembership.findOne({
     user: req.user._id,
     status: "active",
   }).populate("plan");
 
-  const userPlanName = subscription?.plan?.name?.toLowerCase() || null;
+  if (!subscription) {
+    return res.status(403).json({
+      message: "You must have an active membership to view facilities.",
+    });
+  }
 
-  // 🟢 نضيف canBook = true/false على كل فاسيلتي
-  const facilitiesWithAccess = facilities.map((f) => {
-    const isVIPFacility = f.allowedPlans.some((p) => p.name.toLowerCase() === "vip");
+  const userPlanName = subscription.plan?.name?.toLowerCase() || "general";
+
+  // 🧩 فلترة الـ VIP logic
+  const facilitiesWithAccess = facilities.map(f => {
+    const isVIPFacility = f.allowedPlans.some(p => p.name.toLowerCase() === "vip");
 
     let canBook = true;
-    // لو الفاسيليتي VIP والمستخدم General → ممنوع الحجز
-    if (isVIPFacility && userPlanName !== "vip") {
-      canBook = false;
-    }
+    if (isVIPFacility && userPlanName !== "vip") canBook = false;
 
-    // لو ملوش عضوية → ميقدرش يحجز حاجة خالص
-    if (!userPlanName) {
-      canBook = false;
-    }
-
-    return {
-      ...f.toObject(),
-      canBook,
-    };
+    return { ...f.toObject(), canBook };
   });
 
   res.status(200).json({
@@ -110,11 +111,10 @@ exports.getFacilities = asyncHandler(async (req, res) => {
     currentPage: page,
     hasNextPage: page < totalPages,
     hasPrevPage: page > 1,
-    userPlan: userPlanName || "none",
+    userPlan: userPlanName,
     data: facilitiesWithAccess,
   });
 });
-
 
 // ✅ Get single facility
 exports.getFacility = asyncHandler(async (req, res, next) => {
