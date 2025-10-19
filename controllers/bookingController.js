@@ -38,20 +38,43 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
   if (!item) return next(new ApiError("Activity/Facility not found", 404));
 
   // === Check membership plan
-  let userPlanId = null;
-  const activeSub = await SubscriptionMemberShip.findOne({
-    user: req.user._id,
-    status: "active",
-  }).populate("plan");
-  if (activeSub) userPlanId = activeSub.plan._id.toString();
+  // === Check membership and plan type
+const activeSub = await SubscriptionMemberShip.findOne({
+  user: req.user._id,
+  status: "active",
+}).populate("plan");
 
-  if (item.allowedPlans && item.allowedPlans.length > 0) {
-    if (!userPlanId)
-      return next(new ApiError("You need an active membership to book this item", 403));
-    const allowed = item.allowedPlans.some((p) => p._id.toString() === userPlanId);
-    if (!allowed)
-      return next(new ApiError("Your membership plan does not allow booking this item", 403));
+if (!activeSub) {
+  return next(new ApiError("You must have an active membership to book this item", 403));
+}
+
+const userPlanName = activeSub.plan?.name?.toLowerCase() || "general";
+
+// ✅ السماح الكامل للـ Admin
+if (req.user.role !== "admin") {
+  // لو الـ facility أو الـ activity متاحة فقط لـ VIP
+  const isVIPItem = item.allowedPlans?.some(
+    (p) => p.name?.toLowerCase() === "vip"
+  );
+
+  if (isVIPItem && userPlanName !== "vip") {
+    return next(
+      new ApiError("Your membership does not allow booking VIP facilities", 403)
+    );
   }
+
+  // لو مفيش allowedPlans خالص → نسمح بالحجز لأي خطة
+  if (item.allowedPlans && item.allowedPlans.length > 0) {
+    const allowed = item.allowedPlans.some(
+      (p) => p.name?.toLowerCase() === userPlanName
+    );
+    if (!allowed) {
+      return next(
+        new ApiError("Your membership plan does not allow booking this item", 403)
+      );
+    }
+  }
+}
 
   // === Find schedule + slot
   const targetSchedule = (item.schedules || []).find((s) => s.date === date);

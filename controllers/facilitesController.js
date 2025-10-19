@@ -45,53 +45,73 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   if (req.query.category) filter.category = req.query.category;
   if (req.query.search) filter.name = { $regex: req.query.search, $options: "i" };
 
-  // ✅ نجيب كل الفاسيليتيز الأول
+  // 🟢 نجيب كل الفاسيلتيز
   let facilities = await Facility.find(filter)
     .skip(skip)
     .limit(limit)
     .populate("category", "name type")
-    .populate("allowedPlans", "name");
+    .populate("allowedPlans", "_id name");
 
   const totalFacilities = await Facility.countDocuments(filter);
   const totalPages = Math.ceil(totalFacilities / limit);
 
+  // 🟢 لو المستخدم Admin → يشوف ويحجز كل حاجة
+  if (req.user.role === "admin") {
+    const adminFacilities = facilities.map(f => ({
+      ...f.toObject(),
+      canBook: true,
+    }));
 
-  // ✅ نحاول نجيب خطة المستخدم (لو عنده)
+    return res.status(200).json({
+      results: adminFacilities.length,
+      totalFacilities,
+      totalPages,
+      currentPage: page,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+      userPlan: "admin",
+      data: adminFacilities,
+    });
+  }
+
+  // 🟢 نجيب عضوية المستخدم (لو موجودة)
   const subscription = await SubscripeMembership.findOne({
     user: req.user._id,
     status: "active",
   }).populate("plan");
 
-  let userPlanId = subscription?.plan?._id?.toString();
+  const userPlanName = subscription?.plan?.name?.toLowerCase() || null;
 
-  // ✅ mode = vip/general
-  if (req.query.mode === "vip") {
-    facilities = facilities.filter(f =>
-      f.allowedPlans.some(p => p.name?.toLowerCase().includes("vip"))
-    );
-  } else if (req.query.mode === "general") {
-    facilities = facilities.filter(f => f.allowedPlans.length === 0);
-  }
+  // 🟢 نضيف canBook = true/false على كل فاسيلتي
+  const facilitiesWithAccess = facilities.map((f) => {
+    const isVIPFacility = f.allowedPlans.some((p) => p.name.toLowerCase() === "vip");
 
-  // ✅ لو المستخدم عنده plan → رجعله المسموح له بس
-  if (userPlanId) {
-    facilities = facilities.filter(f =>
-      f.allowedPlans.length === 0 ||
-      f.allowedPlans.some(p => p._id.toString() === userPlanId)
-    );
-  } else {
-    // لو ملوش plan → رجع العامة بس
-    facilities = facilities.filter(f => f.allowedPlans.length === 0);
-  }
+    let canBook = true;
+    // لو الفاسيليتي VIP والمستخدم General → ممنوع الحجز
+    if (isVIPFacility && userPlanName !== "vip") {
+      canBook = false;
+    }
+
+    // لو ملوش عضوية → ميقدرش يحجز حاجة خالص
+    if (!userPlanName) {
+      canBook = false;
+    }
+
+    return {
+      ...f.toObject(),
+      canBook,
+    };
+  });
 
   res.status(200).json({
-    results: facilities.length,
+    results: facilitiesWithAccess.length,
     totalFacilities,
     totalPages,
     currentPage: page,
     hasNextPage: page < totalPages,
     hasPrevPage: page > 1,
-    data: facilities,
+    userPlan: userPlanName || "none",
+    data: facilitiesWithAccess,
   });
 });
 

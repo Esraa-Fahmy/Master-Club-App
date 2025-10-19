@@ -7,7 +7,7 @@ const { protect } = require("../controllers/authController");
 router.get("/", protect, controller.getHomeData);
 
 // VIP Events
-router.get("/vip-events", protect, controller.getVipEvents);
+router.get("/events", protect, controller.getAllEvents);
 
 // Recommended (activities or facilities)
 router.get("/recommended", protect, controller.getRecommended);

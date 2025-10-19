@@ -48,16 +48,37 @@ exports.getHomeData = asyncHandler(async (req, res) => {
 });
 
 // GET /home/vip-events
-exports.getVipEvents = asyncHandler(async (req, res) => {
+exports.getAllEvents = asyncHandler(async (req, res) => {
   const now = new Date();
-  const events = await Activity.find({
-    isEvent: true,
-    isVip: true,
-    endDate: { $gte: now }
-  }).populate("category", "name type");
 
+  // 🧩 فلتر أساسي: لازم يكون Event
+  let filter = { isEvent: true };
 
-  res.status(200).json({ results: events.length, data: events });
+  // 🧩 لو المستخدم مش أدمن → نفلتر فقط الأحداث الحالية
+  if (req.user.role !== "admin") {
+    filter.$or = [
+      { endDate: { $gte: now } },
+      { endDate: { $exists: false } }
+    ];
+  }
+
+  // 🧩 لو المستخدم عنده عضوية General → استبعد الأحداث VIP
+  if (req.user.role !== "admin" && req.user.membershipType === "General") {
+    filter.isVip = { $ne: true }; // يعني مش VIP
+  }
+
+  // 🧩 لو المستخدم عنده عضوية VIP → يشوف كل الأحداث
+  // مش محتاجين شرط إضافي
+
+  const events = await Activity.find(filter)
+    .populate("category", "name type")
+    .populate("subCategory", "name category")
+    .sort({ startDate: 1 });
+
+  res.status(200).json({
+    results: events.length,
+    data: events,
+  });
 });
 
 // GET /home/recommended?type=facility OR ?type=activity
