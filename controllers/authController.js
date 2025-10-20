@@ -8,7 +8,7 @@ const sendEmail = require("../utils/sendEmail");
 const {createToken} = require("../utils/createToken");
 const { v4: uuidv4 } = require("uuid");
 const geoip = require("geoip-lite"); // ضيفي السطر دا فوق مع باقي الـ requires
-
+const  SubscripeMmeberShip = require('../models/SubscriptionMemberShip')
 
 // @desc    Signup
 // @route   GET /api/v1/auth/signup
@@ -74,7 +74,7 @@ exports.login = asyncHandler(async (req, res, next) => {
   await user.save();
 
   // 🟢 نجيب الاشتراك الحالي
-  const activeSub = await MembershipSubscription.findOne({
+  const activeSub = await SubscripeMmeberShip.findOne({
     user: user._id,
     status: { $in: ["active", "awaiting_confirmation", "pending_id_verification"] },
   })
