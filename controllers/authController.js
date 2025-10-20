@@ -74,7 +74,7 @@ exports.login = asyncHandler(async (req, res, next) => {
   await user.save();
 
   // 🟢 نجيب أحدث اشتراك
-  const activeSub = await MembershipSubscription.findOne({
+  const activeSub = await SubscripeMmeberShip.findOne({
     user: user._id,
   })
     .sort({ createdAt: -1 }) // الأحدث أولًا
