@@ -41,7 +41,7 @@ exports.login = asyncHandler(async (req, res, next) => {
 
   const token = createToken(user._id);
 
-  // تحديث بيانات الجهاز
+  // 🟢 تحديث بيانات الجهاز
   const userAgent = req.headers["user-agent"] || "unknown";
   const ip = req.ip || req.connection?.remoteAddress;
   const geo = geoip.lookup(ip);
@@ -50,7 +50,7 @@ exports.login = asyncHandler(async (req, res, next) => {
 
   const deviceKey = `${userAgent}-${ip}`;
   const existingDevice = user.devices.find(
-    (d) => `${d.deviceType}- ${d.ip}` === deviceKey
+    (d) => `${d.deviceType}-${d.ip}` === deviceKey
   );
 
   if (existingDevice) {
@@ -73,15 +73,54 @@ exports.login = asyncHandler(async (req, res, next) => {
 
   await user.save();
 
-  // 🟢 نجيب الاشتراك الحالي
-  const activeSub = await SubscripeMmeberShip.findOne({
+  // 🟢 نجيب أحدث اشتراك
+  const activeSub = await MembershipSubscription.findOne({
     user: user._id,
-    status: { $in: ["active", "awaiting_confirmation", "pending_id_verification"] },
   })
+    .sort({ createdAt: -1 }) // الأحدث أولًا
     .populate("plan", "name durationDays price")
     .lean();
 
-  const hasActiveMembership = !!(activeSub && activeSub.status === "active");
+  let membershipStatus = null;
+  let membershipMessage = null;
+
+  if (activeSub) {
+    switch (activeSub.status) {
+      case "pending_id_verification":
+        membershipStatus = "pending_id_verification";
+        membershipMessage = "من فضلك أدخل رقم البطاقة القومية لإتمام الاشتراك.";
+        break;
+
+      case "waiting_admin_approve_national_id":
+        membershipStatus = "waiting_admin_approve_national_id";
+        membershipMessage = "تم استلام رقم البطاقة، في انتظار موافقة الأدمن.";
+        break;
+
+      case "awaiting_confirmation":
+        membershipStatus = "awaiting_confirmation";
+        membershipMessage = "تمت الموافقة على البطاقة، برجاء تأكيد الاشتراك.";
+        break;
+
+      case "active":
+        membershipStatus = "active";
+        membershipMessage = "الاشتراك مفعل بنجاح.";
+        break;
+
+      case "expired":
+        membershipStatus = "expired";
+        membershipMessage = "انتهت صلاحية الاشتراك.";
+        break;
+
+      case "rejected":
+        membershipStatus = "rejected";
+        membershipMessage = "تم رفض الطلب. برجاء التواصل مع الدعم.";
+        break;
+
+      default:
+        membershipStatus = activeSub.status;
+        membershipMessage = "حالة الاشتراك غير معروفة.";
+    }
+  }
 
   res.status(200).json({
     status: "success",
@@ -96,12 +135,13 @@ exports.login = asyncHandler(async (req, res, next) => {
         profileImg: user.profileImg,
         language: user.language,
         points: user.points,
-        hasActiveMembership,
         membership: activeSub
           ? {
               id: activeSub._id,
+              subscriptionId: activeSub.subscriptionId,
               planName: activeSub.plan?.name,
-              status: activeSub.status,
+              status: membershipStatus,
+              message: membershipMessage,
               startDate: activeSub.startDate,
               expiresAt: activeSub.expiresAt,
             }
