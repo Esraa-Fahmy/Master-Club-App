@@ -17,34 +17,44 @@ exports.subscribe = asyncHandler(async (req, res, next) => {
   const plan = await MembershipPlan.findById(planId);
   if (!plan) return next(new ApiError("Plan not found", 404));
 
+  // ✅ تحقق إن المستخدم مش عنده اشتراك نشط أو قيد التنفيذ
+  const existingSub = await MembershipSubscription.findOne({
+    user: req.user._id,
+    status: { $in: ["active", "pending_id_verification", "awaiting_confirmation"] },
+  });
+  if (existingSub) {
+    return next(new ApiError("You already have an active or pending subscription", 400));
+  }
+
   const now = new Date();
   const durationDays = plan.durationDays || 30;
 
-  if (plan.name === "vip") {
-    // VIP → مجرد طلب، subscriptionId وQR ما بيتولدش لحد موافقة الأدمن
-    const subscriptionRequest = {
+  let subscription;
+
+  if (plan.name.toLowerCase() === "vip") {
+    subscription = await MembershipSubscription.create({
       user: req.user._id,
       plan: plan._id,
       status: "pending_id_verification",
-    };
+    });
 
     return res.status(201).json({
       status: "success",
       message: "VIP subscription request created. Awaiting admin approval.",
-      data: subscriptionRequest,
+      data: subscription,
     });
   }
 
-  // العادي → إنشاء subscription مباشر
-  const subscription = await MembershipSubscription.create({
+  // 🔹 خطة عادية = إنشاء مباشر
+  subscription = await MembershipSubscription.create({
     user: req.user._id,
     plan: plan._id,
-    status: "active",
     startDate: now,
     expiresAt: addDays(now, durationDays),
+    status: "active",
   });
 
-  // توليد QR
+  // QR Code
   const qrToken = createQrToken(subscription._id.toString());
   subscription.qrCode = await generateQr(qrToken);
   subscription.qrCodeExpiresAt = new Date(Date.now() + 2 * 60 * 1000);
@@ -54,7 +64,7 @@ exports.subscribe = asyncHandler(async (req, res, next) => {
     status: "success",
     message: "Subscription created successfully",
     data: subscription,
-  });
+  });
 });
 
 // PUT /api/v1/membership-subscriptions/:id/national-id
@@ -290,12 +300,14 @@ exports.confirmSubscription = asyncHandler(async (req, res, next) => {
 
 
 
-
-// GET /api/v1/membership-subscriptions/my-qr
 exports.getMyQr = asyncHandler(async (req, res, next) => {
-  const sub = await MembershipSubscription.findOne({ user: req.user._id, status: "active" })
-    .sort({ createdAt: -1 })
-    .populate("plan");
+  const sub = await MembershipSubscription.findOne({
+    user: req.user._id,
+    status: "active",
+  })
+    .populate("plan", "name durationDays price")
+    .populate("user", "userName phone email");
+
   if (!sub) return next(new ApiError("No active subscription found", 404));
 
   const qrToken = createQrToken(sub._id.toString());
@@ -306,12 +318,24 @@ exports.getMyQr = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     status: "success",
     data: {
+      user: {
+        id: sub.user._id,
+        name: sub.user.userName,
+        phone: sub.user.phone,
+        email: sub.user.email,
+      },
+      membership: {
+        id: sub._id,
+        planName: sub.plan.name,
+        status: sub.status,
+        expiresAt: sub.expiresAt,
+        points: sub.points,
+        visitsUsed: sub.visitsUsed,
+      },
       qrCode: sub.qrCode,
       qrCodeExpiresAt: sub.qrCodeExpiresAt,
-      plan: sub.plan,
-      expiresAt: sub.expiresAt,
-    },
-  });
+    },
+  });
 });
 
 // PUT /api/v1/membership-subscriptions/:id/refresh-qr
