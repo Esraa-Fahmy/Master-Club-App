@@ -29,8 +29,6 @@ exports.signup = asyncHandler(async (req, res, next) => {
 
 // @desc    Login
 // @route   POST /api/v1/auth/login
-// @access  Public
-// @desc    Login
 exports.login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -74,15 +72,14 @@ exports.login = asyncHandler(async (req, res, next) => {
   await user.save();
 
   // 🟢 نجيب أحدث اشتراك
-  const activeSub = await SubscripeMmeberShip.findOne({
-    user: user._id,
-  })
-    .sort({ createdAt: -1 }) // الأحدث أولًا
-    .populate("plan", "name durationDays price")
+  const activeSub = await SubscripeMmeberShip.findOne({ user: user._id })
+    .sort({ createdAt: -1 })
+    .populate("plan", "name durationDays price permissions")
     .lean();
 
   let membershipStatus = null;
   let membershipMessage = null;
+  let hasActiveMembership = false;
 
   if (activeSub) {
     switch (activeSub.status) {
@@ -104,6 +101,7 @@ exports.login = asyncHandler(async (req, res, next) => {
       case "active":
         membershipStatus = "active";
         membershipMessage = "الاشتراك مفعل بنجاح.";
+        hasActiveMembership = true; // ✅
         break;
 
       case "expired":
@@ -122,6 +120,7 @@ exports.login = asyncHandler(async (req, res, next) => {
     }
   }
 
+  // ✅ نرجع الريسبونس
   res.status(200).json({
     status: "success",
     token,
@@ -135,11 +134,13 @@ exports.login = asyncHandler(async (req, res, next) => {
         profileImg: user.profileImg,
         language: user.language,
         points: user.points,
+        hasActiveMembership, // ✅ مضافة
         membership: activeSub
           ? {
               id: activeSub._id,
               subscriptionId: activeSub.subscriptionId,
               planName: activeSub.plan?.name,
+              permissions: activeSub.plan?.permissions || [], // ✅ مضافة
               status: membershipStatus,
               message: membershipMessage,
               startDate: activeSub.startDate,
