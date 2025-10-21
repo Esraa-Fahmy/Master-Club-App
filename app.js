@@ -7,7 +7,8 @@ const http = require("http");
 const dbConnection = require("./config/database");
 const globalError = require("./midlewares/errmiddleware");
 const { initSocket } = require("./utils/socket");
-
+const fs = require("fs");
+ 
 dotenv.config({ path: "config.env" });
 dbConnection();
 
@@ -17,9 +18,18 @@ const app = express();
 app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: "20kb" }));
-app.use(express.static(path.join(__dirname, "uploads")));
+const uploadsDir  = path.join(__dirname, "uploads");
 
-
+if (fs.existsSync(uploadsDir)) {
+  const folders = fs.readdirSync(uploadsDir);
+  folders.forEach(folder => {
+    const folderPath = path.join(uploadsDir, folder);
+    if (fs.lstatSync(folderPath).isDirectory()) {
+      app.use(`/${folder}`, express.static(folderPath));
+      console.log(`Static route added: /${folder} → ${folderPath}`);
+    }
+  });
+}
 
 
 // Mount Routes
