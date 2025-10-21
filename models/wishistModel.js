@@ -1,4 +1,3 @@
-// models/wishlistModel.js
 const mongoose = require("mongoose");
 
 const wishlistSchema = new mongoose.Schema(
@@ -8,22 +7,16 @@ const wishlistSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    item: [{
+    product: {
       type: mongoose.Schema.ObjectId,
+      ref: "Product",
       required: true,
-      refPath: "itemType", // ديناميك على حسب النوع
-    }],
-    itemType: [{
-      type: String,
-      required: true,
-      enum: ["Activity", "Facility", "Product"], // الأنواع اللي عندك
-    }],
-    createdAt: {
-      type: Date,
-      default: Date.now,
     },
   },
   { timestamps: true }
 );
+
+// 🟢 تأكد إن كل يوزر ما يضيفش نفس المنتج مرتين
+wishlistSchema.index({ user: 1, product: 1 }, { unique: true });
 
 module.exports = mongoose.model("Wishlist", wishlistSchema);
