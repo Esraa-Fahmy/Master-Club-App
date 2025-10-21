@@ -1,3 +1,4 @@
+// controllers/productController.js
 const Product = require("../models/productModel");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
@@ -6,6 +7,7 @@ const sharp = require('sharp');
 const { uploadMixOfImages } = require('../midlewares/uploadImageMiddleWare');
 const fs = require('fs');
 const offersModel = require("../models/offersModel");
+const Wishlist = require("../models/wishistModel"); // 🟢 أضفناها
 
 // ====== Image Upload & Resize ======
 exports.uploadProductImages = uploadMixOfImages([
@@ -14,7 +16,6 @@ exports.uploadProductImages = uploadMixOfImages([
 ]);
 
 exports.resizeProductImages = asyncHandler(async (req, res, next) => {
-  // ✅ معالجة coverImage
   if (req.files.coverImage) {
     const fileName = `product-${uuidv4()}-${Date.now()}-cover.jpeg`;
     const path = "uploads/products/";
@@ -28,7 +29,6 @@ exports.resizeProductImages = asyncHandler(async (req, res, next) => {
     req.body.coverImage = fileName;
   }
 
-  // ✅ معالجة باقي الصور
   if (req.files.images) {
     req.body.images = [];
     const path = "uploads/products/";
@@ -46,7 +46,6 @@ exports.resizeProductImages = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // ✅ لو form-data فيها أرقام أو قيم Boolean كـ string، نحولها
   const numericFields = ["price", "discountPrice", "quantity"];
   numericFields.forEach(field => {
     if (req.body[field]) req.body[field] = Number(req.body[field]);
@@ -90,7 +89,18 @@ exports.getProducts = asyncHandler(async (req, res) => {
     query = query.sort({ createdAt: -1 });
   }
 
-  const products = await query;
+  const products = await query.lean();
+
+  // 🟢 إضافة isFavourite لكل منتج بناءً على الويش ليست بتاعة اليوزر
+  if (req.user) {
+    const favs = await Wishlist.find({ user: req.user._id }).select("item");
+    const favIds = favs.map(f => f.item.toString());
+    products.forEach(p => {
+      p.isFavourite = favIds.includes(p._id.toString());
+    });
+  } else {
+    products.forEach(p => p.isFavourite = false);
+  }
 
   res.status(200).json({
     results: products.length,
@@ -99,12 +109,11 @@ exports.getProducts = asyncHandler(async (req, res) => {
 });
 
 // ✅ Get Single Product
-// controllers/productController.js
 exports.getProduct = asyncHandler(async (req, res, next) => {
   const product = await Product.findById(req.params.id).populate("category");
   if (!product) return next(new ApiError("Product not found", 404));
 
-  // تطبيق أي عرض نشط
+  // ✅ العروض زي ما هي
   const offer = await offersModel.findOne({
     isActive: true,
     expiresAt: { $gt: new Date() },
@@ -121,15 +130,25 @@ exports.getProduct = asyncHandler(async (req, res, next) => {
       : product.price - offer.discountValue;
   }
 
+  // 🟢 تحقق إذا المنتج مضاف في الويش ليست
+  let isFavourite = false;
+  if (req.user) {
+    const fav = await Wishlist.findOne({
+      user: req.user._id,
+      item: product._id,
+    });
+    if (fav) isFavourite = true;
+  }
+
   res.status(200).json({
     data: {
       ...product.toObject(),
       finalPrice,
-      appliedOffer: offer || null
+      appliedOffer: offer || null,
+      isFavourite, // ✅ تمت الإضافة
     }
   });
 });
-
 
 // ✅ Update Product
 exports.updateProduct = asyncHandler(async (req, res, next) => {

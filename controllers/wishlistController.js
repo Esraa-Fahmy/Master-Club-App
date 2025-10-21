@@ -2,43 +2,36 @@
 const asyncHandler = require("express-async-handler");
 const Wishlist = require("../models/wishistModel");
 const ApiError = require("../utils/apiError");
+const productModel = require("../models/productModel");
 
-// ➕ إضافة عنصر للويش ليست
-// controllers/wishlistController.js
+exports.toggleWishlist = asyncHandler(async (req, res, next) => {
+  const { productId } = req.body;
+  if (!productId) return next(new ApiError("productId is required", 400));
 
-const Product = require("../models/productModel");
-
-// ➕ إضافة عنصر للويش ليست
-exports.addToWishlist = asyncHandler(async (req, res, next) => {
-  const { itemId, itemType } = req.body;
-
-  if (!itemId || !itemType) {
-    return next(new ApiError("Item ID and itemType are required", 400));
-  }
-
-  // ✅ تحقق أن المنتج موجود قبل إضافته
-  if (itemType === "Product") {
-    const product = await Product.findById(itemId);
-    if (!product) return next(new ApiError("Product not found", 404));
-  }
-
-  const exists = await Wishlist.findOne({
+  const product = await productModel.findById(productId);
+  if (!product) return next(new ApiError("product not found , 404"));
+  
+  const existing = await Wishlist.findOne({
     user: req.user._id,
-    item: itemId,
-    itemType,
+    product: productId,
   });
 
-  if (exists) {
-    return next(new ApiError("Item already in wishlist", 400));
-  }
-
-  const wishlist = await Wishlist.create({
-    user: req.user._id,
-    item: itemId,
-    itemType,
-  });
-
-  res.status(201).json({ message: "Added to wishlist", data: wishlist });
+  if (existing) {
+    await Wishlist.deleteOne({ _id: existing._id });
+    return res.status(200).json({
+      message: "Removed from wishlist",
+      isFavourite: false,
+    });
+  } else {
+    await Wishlist.create({
+      user: req.user._id,
+      product: productId,
+    });
+    return res.status(201).json({
+      message: "Added to wishlist",
+      isFavourite: true,
+    });
+  }
 });
 
 // 📜 عرض الويش ليست الخاصة باليوزر
@@ -50,23 +43,6 @@ exports.getMyWishlist = asyncHandler(async (req, res, next) => {
   }
 
   res.status(200).json({ results: wishlist.length, data: wishlist });
-});
-
-
-// ❌ حذف عنصر من الويش ليست
-exports.removeFromWishlist = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-
-  const wishlistItem = await Wishlist.findOneAndDelete({
-    _id: id,
-    user: req.user._id,
-  });
-
-  if (!wishlistItem) {
-    return next(new ApiError("Item not found in wishlist", 404));
-  }
-
-  res.status(200).json({ message: "Removed from wishlist" });
 });
 
 
