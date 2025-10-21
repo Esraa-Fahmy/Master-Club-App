@@ -93,8 +93,8 @@ exports.getProducts = asyncHandler(async (req, res) => {
 
   // 🟢 إضافة isFavourite لكل منتج بناءً على الويش ليست بتاعة اليوزر
   if (req.user) {
-    const favs = await Wishlist.find({ user: req.user._id }).select("item");
-    const favIds = favs.map(f => f.item.toString());
+    const favs = await Wishlist.find({ user: req.user._id }).select("product");
+    const favIds = favs.map(f => f.product.toString());
     products.forEach(p => {
       p.isFavourite = favIds.includes(p._id.toString());
     });
@@ -135,7 +135,7 @@ exports.getProduct = asyncHandler(async (req, res, next) => {
   if (req.user) {
     const fav = await Wishlist.findOne({
       user: req.user._id,
-      item: product._id,
+      product: product._id,
     });
     if (fav) isFavourite = true;
   }
