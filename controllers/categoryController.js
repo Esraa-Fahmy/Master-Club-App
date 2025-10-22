@@ -54,8 +54,7 @@ exports.getCategories = asyncHandler(async (req, res, next) => {
   const categories = await Category.find(filter)
     .skip(skip)
     .limit(limit)
-   .lean({ virtuals: true }); // علشان نقدر نضيف subCategories يدوي
-
+   
   // نجيب كل الـ subCategories اللي ليها علاقة بالكاتجوري دي
   const categoryIds = categories.map(cat => cat._id);
   const subCategories = await require("../models/subCategoryModel")

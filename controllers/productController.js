@@ -93,7 +93,7 @@ exports.getProducts = asyncHandler(async (req, res) => {
     query = query.sort({ createdAt: -1 });
   }
 
-  const products = await query.lean({ virtuals: true });
+  const products = await query;
 
   // 🟢 إضافة isFavourite لكل منتج بناءً على الويش ليست بتاعة اليوزر
   let favIds = [];

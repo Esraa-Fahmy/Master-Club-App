@@ -151,6 +151,8 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
     planType: m.plan?.type,
     planDescription: m.plan?.description, // ✅ وصف العضوية
     status: m.status,
+    priceAdvantage: m.plan?.priceAdvantage,
+     permissions: m.plan?.permissions || [],
     startDate: m.startDate,
     expiresAt: m.expiresAt,
     createdAt: m.createdAt,
@@ -387,6 +389,8 @@ exports.getMyMembership = asyncHandler(async (req, res, next) => {
       planName: membership.plan?.name,
       planType: membership.plan?.type,
       status: membership.status,
+      priceAdvantage: membership.plan?.priceAdvantage,
+      permissions: membership.plan?.permissions || [],
       startDate: membership.startDate,
       expiresAt: membership.expiresAt,
       createdAt: membership.createdAt,
