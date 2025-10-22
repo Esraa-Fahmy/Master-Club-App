@@ -62,10 +62,14 @@ exports.getCategories = asyncHandler(async (req, res, next) => {
     .select("name image category");
 
   // نربط كل كاتجوري بالساب كاتجوريز بتاعتها
-  const categoriesWithSubs = categories.map(cat => {
-    const relatedSubs = subCategories.filter(sub => sub.category.toString() === cat._id.toString());
-    return { ...cat, subCategories: relatedSubs };
-  });
+ const categoriesWithSubs = categories.map(cat => {
+  const relatedSubs = subCategories.filter(sub => sub.category.toString() === cat._id.toString());
+  return { 
+    ...cat.toObject(),       // ✅ تحويل document إلى object عادي
+    subCategories: relatedSubs 
+  };
+});
+
 
   res.status(200).json({
     results: categoriesWithSubs.length,
