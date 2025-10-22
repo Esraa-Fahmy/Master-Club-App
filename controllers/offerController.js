@@ -39,8 +39,8 @@ exports.createOffer = asyncHandler(async (req, res) => {
 // ✅ الحصول على العروض الفعالة
 exports.getActiveOffers = asyncHandler(async (req, res) => {
   const offers = await Offer.find({ isActive: true, expiresAt: { $gt: new Date() } })
-    .populate("category", "name")
-    .populate("products", "name price");
+    .populate("category")
+    .populate("products");
   res.status(200).json({ results: offers.length, data: offers });
 });
 
