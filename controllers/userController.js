@@ -119,10 +119,9 @@ exports.deleteUser = asyncHandler(async (req, res, next) => {
 // -------------------- Logged User --------------------
 
 // Get Logged user profile
+// Get Logged user profile
 exports.getMyProfile = asyncHandler(async (req, res, next) => {
-  const user = await User.findById(req.user._id)
-    .populate("orders")
-
+  const user = await User.findById(req.user._id).populate("orders");
   if (!user) return next(new ApiError("User not found", 404));
 
   // 🟢 كل العضويات الخاصة باليوزر
@@ -147,12 +146,19 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
   // 🧩 تجهيز بيانات العضويات
   const formattedMemberships = memberships.map((m) => ({
     id: m._id,
-    subscriptionId: m.subscriptionId, // ✅ مضاف
+    subscriptionId: m.subscriptionId,
     planName: m.plan?.name,
     planType: m.plan?.type,
+    planDescription: m.plan?.description, // ✅ وصف العضوية
     status: m.status,
     startDate: m.startDate,
     expiresAt: m.expiresAt,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+    points: m.points || 0,
+    totalVisits: m.visitsUsed || 0,
+    qrCode: m.qrCode || null,
+    accessGranted: m.accessGranted || null,
   }));
 
   // 🧩 تجهيز آخر الأنشطة (آخر 5 مثلاً)
@@ -161,7 +167,7 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
     date: b.date,
     timeSlot: b.timeSlot,
     price: b.price,
-    status: b.status, // ✅ الحالة (pending / confirmed / completed / cancelled)
+    status: b.status,
     activity: b.activity
       ? {
           id: b.activity._id,
@@ -178,18 +184,23 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
       : null,
   }));
 
-  // 🟢 العضوية الحالية الفعالة
+  // 🟢 إجمالي النقاط والزيارات
+  const totalPoints = memberships.reduce((sum, m) => sum + (m.points || 0), 0);
+  const totalVisits = memberships.reduce((sum, m) => sum + (m.visitsUsed || 0), 0);
 
   res.status(200).json({
     status: "success",
     data: {
       ...user.toObject(),
-      totalBookings,          // ✅ عدد كل الحجوزات
-      memberships: formattedMemberships, // ✅ كل العضويات بالتفاصيل          }
-      recentActivities,       // ✅ آخر الأنشطة بالحالة بتاعتها
+      totalBookings,             // ✅ عدد كل الحجوزات
+      totalPoints,               // ✅ إجمالي النقاط
+      totalVisits,               // ✅ إجمالي الزيارات
+      memberships: formattedMemberships, // ✅ العضويات بالتفاصيل
+      recentActivities,          // ✅ آخر الأنشطة بالحالة
     },
   });
 });
+
 
 
 // Update logged user password

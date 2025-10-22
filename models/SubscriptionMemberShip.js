@@ -51,9 +51,7 @@ const membershipSubscriptionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// 🟢 لما الحالة تبقى active لأول مرة → نولّد subscriptionId
 membershipSubscriptionSchema.pre("save", async function (next) {
-  // لو العضوية اتفعلت ومفيش subscriptionId لسه
   if (this.isModified("status") && this.status === "active" && !this.subscriptionId) {
     let unique = false;
     while (!unique) {
