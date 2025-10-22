@@ -180,22 +180,13 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
   }));
 
   // 🟢 العضوية الحالية الفعالة
-  const activeMembership = memberships.find((m) => m.status === "active");
 
   res.status(200).json({
     status: "success",
     data: {
       ...user.toObject(),
       totalBookings,          // ✅ عدد كل الحجوزات
-      memberships: formattedMemberships, // ✅ كل العضويات بالتفاصيل
-      activeMembership: activeMembership
-        ? {
-            id: activeMembership._id,
-            subscriptionId: activeMembership.subscriptionId,
-            planName: activeMembership.plan?.name,
-            planType: activeMembership.plan?.type,
-          }
-        : null,
+      memberships: formattedMemberships, // ✅ كل العضويات بالتفاصيل          }
       recentActivities,       // ✅ آخر الأنشطة بالحالة بتاعتها
     },
   });
