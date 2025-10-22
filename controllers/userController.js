@@ -119,7 +119,6 @@ exports.deleteUser = asyncHandler(async (req, res, next) => {
 // -------------------- Logged User --------------------
 
 // Get Logged user profile
-// Get Logged user profile (with all memberships)
 exports.getMyProfile = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user._id)
     .populate("orders")
@@ -127,17 +126,81 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
 
   if (!user) return next(new ApiError("User not found", 404));
 
-  // هات كل العضويات الخاصة باليوزر ده
+  // 🟢 كل العضويات الخاصة باليوزر
   const memberships = await SubscriptionMemberShip.find({ user: req.user._id })
     .populate("plan");
 
+  // 🟢 كل الحجوزات الخاصة باليوزر
+  const bookings = await bookingModel.find({ user: req.user._id })
+    .populate({
+      path: "activity",
+      select: "name images"
+    })
+    .populate({
+      path: "facility",
+      select: "name images"
+    })
+    .sort({ createdAt: -1 });
+
+  // 🧮 إجمالي عدد الحجوزات
+  const totalBookings = bookings.length;
+
+  // 🧩 تجهيز بيانات العضويات
+  const formattedMemberships = memberships.map((m) => ({
+    id: m._id,
+    subscriptionId: m.subscriptionId, // ✅ مضاف
+    planName: m.plan?.name,
+    planType: m.plan?.type,
+    status: m.status,
+    startDate: m.startDate,
+    expiresAt: m.expiresAt,
+  }));
+
+  // 🧩 تجهيز آخر الأنشطة (آخر 5 مثلاً)
+  const recentActivities = bookings.slice(0, 5).map((b) => ({
+    id: b._id,
+    date: b.date,
+    timeSlot: b.timeSlot,
+    price: b.price,
+    status: b.status, // ✅ الحالة (pending / confirmed / completed / cancelled)
+    activity: b.activity
+      ? {
+          id: b.activity._id,
+          name: b.activity.name,
+          images: b.activity.images || [],
+        }
+      : null,
+    facility: b.facility
+      ? {
+          id: b.facility._id,
+          name: b.facility.name,
+          images: b.facility.images || [],
+        }
+      : null,
+  }));
+
+  // 🟢 العضوية الحالية الفعالة
+  const activeMembership = memberships.find((m) => m.status === "active");
+
   res.status(200).json({
+    status: "success",
     data: {
       ...user.toObject(),
-      memberships, // رجّع كل العضويات مش واحدة بس
+      totalBookings,          // ✅ عدد كل الحجوزات
+      memberships: formattedMemberships, // ✅ كل العضويات بالتفاصيل
+      activeMembership: activeMembership
+        ? {
+            id: activeMembership._id,
+            subscriptionId: activeMembership.subscriptionId,
+            planName: activeMembership.plan?.name,
+            planType: activeMembership.plan?.type,
+          }
+        : null,
+      recentActivities,       // ✅ آخر الأنشطة بالحالة بتاعتها
     },
   });
 });
+
 
 // Update logged user password
 exports.updateMyPassword = asyncHandler(async (req, res, next) => {
@@ -278,6 +341,7 @@ exports.removePaymentMethod = asyncHandler(async (req, res) => {
 
 // @desc    Get my membership details
 const Booking = require("../models/bookingModel");
+const bookingModel = require("../models/bookingModel");
 
 exports.getMyMembership = asyncHandler(async (req, res, next) => {
   const memberships = await SubscriptionMemberShip.find({ user: req.user._id })
