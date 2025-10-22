@@ -7,7 +7,10 @@ const sharp = require('sharp');
 const { uploadMixOfImages } = require('../midlewares/uploadImageMiddleWare');
 const fs = require('fs');
 const offersModel = require("../models/offersModel");
-const Wishlist = require("../models/wishistModel"); // 🟢 أضفناها
+const Wishlist = require("../models/wishistModel"); 
+// ✅ Get All Products (مع فلترة)
+const Cart = require("../models/cartModel");
+
 
 // ====== Image Upload & Resize ======
 exports.uploadProductImages = uploadMixOfImages([
@@ -63,7 +66,8 @@ exports.createProduct = asyncHandler(async (req, res, next) => {
   res.status(201).json({ data: product });
 });
 
-// ✅ Get All Products (مع فلترة)
+
+// ✅ Get All Products
 exports.getProducts = asyncHandler(async (req, res) => {
   let filter = {};
 
@@ -89,18 +93,31 @@ exports.getProducts = asyncHandler(async (req, res) => {
     query = query.sort({ createdAt: -1 });
   }
 
-  const products = await query.lean();
+  const products = await query.lean({ virtuals: true });
 
   // 🟢 إضافة isFavourite لكل منتج بناءً على الويش ليست بتاعة اليوزر
+  let favIds = [];
+  let cartItems = [];
+
   if (req.user) {
     const favs = await Wishlist.find({ user: req.user._id }).select("product");
-    const favIds = favs.map(f => f.product.toString());
-    products.forEach(p => {
-      p.isFavourite = favIds.includes(p._id.toString());
-    });
-  } else {
-    products.forEach(p => p.isFavourite = false);
+    favIds = favs.map(f => f.product.toString());
+
+    const cart = await Cart.findOne({ user: req.user._id });
+    if (cart) {
+      cartItems = cart.items.map(i => ({
+        productId: i.product.toString(),
+        quantity: i.quantity,
+      }));
+    }
   }
+
+  // 🟡 ضيفي isFavourite و cartQuantity
+  products.forEach(p => {
+    p.isFavourite = favIds.includes(p._id.toString());
+    const cartItem = cartItems.find(i => i.productId === p._id.toString());
+    p.cartQuantity = cartItem ? cartItem.quantity : 0;
+  });
 
   res.status(200).json({
     results: products.length,
@@ -132,12 +149,20 @@ exports.getProduct = asyncHandler(async (req, res, next) => {
 
   // 🟢 تحقق إذا المنتج مضاف في الويش ليست
   let isFavourite = false;
+  let cartQuantity = 0;
+
   if (req.user) {
     const fav = await Wishlist.findOne({
       user: req.user._id,
       product: product._id,
     });
     if (fav) isFavourite = true;
+
+    const cart = await Cart.findOne({ user: req.user._id });
+    if (cart) {
+      const item = cart.items.find(i => i.product.toString() === product._id.toString());
+      if (item) cartQuantity = item.quantity;
+    }
   }
 
   res.status(200).json({
@@ -146,9 +171,11 @@ exports.getProduct = asyncHandler(async (req, res, next) => {
       finalPrice,
       appliedOffer: offer || null,
       isFavourite, // ✅ تمت الإضافة
+      cartQuantity, // ✅ تمت الإضافة
     }
   });
 });
+
 
 // ✅ Update Product
 exports.updateProduct = asyncHandler(async (req, res, next) => {
