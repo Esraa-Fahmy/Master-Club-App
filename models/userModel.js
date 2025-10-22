@@ -77,6 +77,25 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+
+
+
+const setImageURL = (doc) => {
+    if (doc.profileImg) {
+      const imageUrl = `${process.env.BASE_URL}/users/${doc.profileImg}`;
+      doc.profileImg = imageUrl;
+    }
+  };
+  // findOne, findAll and update
+  userSchema.post('init', (doc) => {
+    setImageURL(doc);
+  });
+
+  // create
+  userSchema.post('save', (doc) => {
+    setImageURL(doc);
+  });
+
 // 🔑 Hash password before save
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();

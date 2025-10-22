@@ -46,7 +46,7 @@ const setImageURL = (doc) => {
       doc.images.forEach((image) => {
           const imageUrl = image.startsWith(process.env.BASE_URL)
               ? image
-              : `${process.env.BASE_URL}/facilites/${image}`;
+              : `${process.env.BASE_URL}/facilities/${image}`;
           imagesList.push(imageUrl);
       });
       doc.images = imagesList;
