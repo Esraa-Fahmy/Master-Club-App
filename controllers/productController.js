@@ -95,7 +95,7 @@ exports.getProducts = asyncHandler(async (req, res) => {
 
   const products = await query;
 
-  // 🟢 إضافة isFavourite لكل منتج بناءً على الويش ليست بتاعة اليوزر
+  // 🟢 اجلب بيانات الويش ليست والسلة
   let favIds = [];
   let cartItems = [];
 
@@ -112,17 +112,19 @@ exports.getProducts = asyncHandler(async (req, res) => {
     }
   }
 
-  // 🟡 ضيفي isFavourite و cartQuantity
-  products.forEach(p => {
-    p.isFavourite = favIds.includes(p._id.toString());
+  // 🟡 حوّل كل منتج إلى Object وأضف عليه القيم الإضافية
+  const formattedProducts = products.map(p => {
+    const productObj = p.toObject(); // ✅ يحول document إلى object عادي
+    productObj.isFavourite = favIds.includes(p._id.toString());
     const cartItem = cartItems.find(i => i.productId === p._id.toString());
-    p.cartQuantity = cartItem ? cartItem.quantity : 0;
+    productObj.cartQuantity = cartItem ? cartItem.quantity : 0;
+    return productObj;
   });
 
   res.status(200).json({
-    results: products.length,
-    data: products,
-  });
+    results: formattedProducts.length,
+    data: formattedProducts,
+  });
 });
 
 // ✅ Get Single Product
