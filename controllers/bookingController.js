@@ -14,7 +14,6 @@ const mongoose = require("mongoose");
 // User Endpoints
 // =======================
 
-// POST /bookings
 exports.createBooking = asyncHandler(async (req, res, next) => {
   const { 
     activityId, 
@@ -24,7 +23,7 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
     price, 
     specialRequest, 
     guests = 1, 
-    isPrivate = false   // 🆕 خيار جديد
+    isPrivate = false 
   } = req.body;
 
   if (!activityId && !facilityId)
@@ -32,49 +31,52 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
   if (!date || !timeSlot)
     return next(new ApiError("date and timeSlot are required", 400));
 
+  // ✅ نعمل populate للـ allowedPlans علشان نقدر نقرأ الاسم
   const item = activityId
-    ? await Activity.findById(activityId)
-    : await Facility.findById(facilityId);
+    ? await Activity.findById(activityId).populate("allowedPlans")
+    : await Facility.findById(facilityId).populate("allowedPlans");
+
   if (!item) return next(new ApiError("Activity/Facility not found", 404));
 
   // === Check membership plan
-  // === Check membership and plan type
-const activeSub = await SubscriptionMemberShip.findOne({
-  user: req.user._id,
-  status: "active",
-}).populate("plan");
+  const activeSub = await SubscriptionMemberShip.findOne({
+    user: req.user._id,
+    status: "active",
+  }).populate("plan");
 
-if (!activeSub) {
-  return next(new ApiError("You must have an active membership to book this item", 403));
-}
-
-const userPlanName = activeSub.plan?.name?.toLowerCase() || "general";
-
-// ✅ السماح الكامل للـ Admin
-if (req.user.role !== "admin") {
-  // لو الـ facility أو الـ activity متاحة فقط لـ VIP
-  const isVIPItem = item.allowedPlans?.some(
-    (p) => p.name?.toLowerCase() === "vip"
-  );
-
-  if (isVIPItem && userPlanName !== "vip") {
-    return next(
-      new ApiError("Your membership does not allow booking VIP facilities", 403)
-    );
+  if (!activeSub) {
+    return next(new ApiError("You must have an active membership to book this item", 403));
   }
 
-  // لو مفيش allowedPlans خالص → نسمح بالحجز لأي خطة
-  if (item.allowedPlans && item.allowedPlans.length > 0) {
-    const allowed = item.allowedPlans.some(
-      (p) => p.name?.toLowerCase() === userPlanName
+  const userPlanName = activeSub.plan?.name?.toLowerCase().trim() || "general";
+
+  // ✅ السماح الكامل للـ Admin
+  if (req.user.role !== "admin") {
+    // لو الـ facility أو الـ activity فيها VIP plans
+    const isVIPItem = item.allowedPlans?.some(
+      (p) => p.name?.toLowerCase().trim() === "vip"
     );
-    if (!allowed) {
+
+    if (isVIPItem && userPlanName !== "vip") {
       return next(
-        new ApiError("Your membership plan does not allow booking this item", 403)
-      );
-    }
-  }
-}
+        new ApiError("Your membership does not allow booking VIP facilities", 403)
+      );
+    }
+
+    // ✅ السماح فقط لو الخطة موجودة في الـ allowedPlans
+    if (item.allowedPlans && item.allowedPlans.length > 0) {
+      const allowed = item.allowedPlans.some(
+        (p) => p.name?.toLowerCase().trim() === userPlanName.trim()
+      );
+
+      if (!allowed) {
+        console.log("❌ Not allowed:", { userPlanName, allowedPlans: item.allowedPlans });
+        return next(
+          new ApiError("Your membership plan does not allow booking this item", 403)
+        );
+      }
+    }
+  }
 
   // === Find schedule + slot
   const targetSchedule = (item.schedules || []).find((s) => s.date === date);
@@ -95,13 +97,12 @@ if (req.user.role !== "admin") {
   });
   if (userDuplicate) return next(new ApiError("You already have a booking for this slot", 400));
 
-  // 🆕 === Private Booking Case
+  // === Private Booking Case
   if (isPrivate) {
     if (!item.privateBookingAllowed) {
       return next(new ApiError("Private booking not allowed for this facility", 400));
     }
 
-    // اتأكد إن مفيش أي حجز تاني على نفس الـ slot
     const conflict = await Booking.findOne({
       facility: facilityId,
       date,
@@ -110,11 +111,9 @@ if (req.user.role !== "admin") {
     });
     if (conflict) return next(new ApiError("This slot is already booked privately", 400));
 
-    // هيحجز المكان كله → guests = full capacity
     guests = slot.capacity || item.capacityPerSlot || 1;
-
   } else {
-    // === Normal Guests Booking (زي الكود الحالي)
+    // === Normal Guests Booking
     const existingCount = await Booking.aggregate([
       {
         $match: {
@@ -147,14 +146,14 @@ if (req.user.role !== "admin") {
     timeSlot: slot.time,
     slotId: slot.id || uuidv4(),
     guests,
-    isPrivate, // 🆕 نحتفظ بيها في الداتا
+    isPrivate,
     specialRequest: specialRequest || "",
     price: price || 0,
     paymentStatus: req.body.paymentStatus || "unpaid",
     status: "pending",
   });
 
-  // === Update reserved
+  // === Update reserved count
   await (activityId ? Activity : Facility).updateOne(
     { _id: item._id, "schedules.date": date, "schedules.slots.time": slot.time },
     { $inc: { "schedules.$[s].slots.$[sl].reserved": guests } },
@@ -165,12 +164,12 @@ if (req.user.role !== "admin") {
   await sendNotification(
     req.user._id,
     "طلب حجز جديد",
-    `تم إرسال طلب حجز ${activityId ? "لنشاط" : "لمرفق"} بتاريخ ${date} - ${slot.time}.`,
+   ` تم إرسال طلب حجز ${activityId ? "لنشاط" : "لمرفق"} بتاريخ ${date} - ${slot.time}.`,
     "system",
     { bookingId: booking._id }
   );
 
-  res.status(201).json({ status: "success", data: booking });
+  res.status(201).json({ status: "success", data: booking });
 });
 
 

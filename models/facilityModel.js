@@ -20,6 +20,9 @@ const facilitySchema = new mongoose.Schema(
     images: [String],
     location: String,
     openingHours: String,
+      benfites : [{
+      type :String
+    }],
    allowedPlans: [
       { type: mongoose.Schema.Types.ObjectId, ref: "MembershipPlan" }
     ], 
