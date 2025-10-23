@@ -40,7 +40,11 @@ exports.createOffer = asyncHandler(async (req, res) => {
 exports.getActiveOffers = asyncHandler(async (req, res) => {
   const offers = await Offer.find({ isActive: true, expiresAt: { $gt: new Date() } })
     .populate("category")
-    .populate("products");
+    .populate({
+      path: "products",
+      populate: {path: "category"}
+
+    });
   res.status(200).json({ results: offers.length, data: offers });
 });
 
