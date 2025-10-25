@@ -187,7 +187,7 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
       activity: b.activity
         ? {
             id: b.activity._id,
-            name: b.activity.name,
+            title: b.activity.title,
             images: b.activity.images || [],
           }
         : null,
