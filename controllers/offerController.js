@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
 const { uploadMixOfImages } = require("../midlewares/uploadImageMiddleWare");
 const fs = require("fs");
+const cartModel = require("../models/cartModel");
 
 // ✅ Upload images
 exports.uploadOffersImages = uploadMixOfImages([{ name: "images", maxCount: 5 }]);
@@ -38,15 +39,47 @@ exports.createOffer = asyncHandler(async (req, res) => {
 
 // ✅ الحصول على العروض الفعالة
 exports.getActiveOffers = asyncHandler(async (req, res) => {
-  const offers = await Offer.find({ isActive: true, expiresAt: { $gt: new Date() } })
+  const offers = await Offer.find({
+    isActive: true,
+    expiresAt: { $gt: new Date() },
+  })
     .populate("category")
     .populate({
       path: "products",
-      populate: {path: "category"}
-
+      populate: { path: "category" },
     });
-  res.status(200).json({ results: offers.length, data: offers });
+
+  // ✅ جلب كارت المستخدم (لو موجود)
+  const cart = await cartModel.findOne({ user: req.user._id });
+
+  // ✅ لو عندك موديل للمفضلات (Favorites)
+  // const favorites = await Favorite.find({ user: req.user._id });
+
+  const updatedOffers = offers.map((offer) => {
+    const updatedProducts = offer.products.map((prod) => {
+      const cartItem = cart?.items.find(
+        (item) => item.product.toString() === prod._id.toString()
+      );
+
+      return {
+        ...prod.toObject(),
+        isFavorite: false, // أو تحقق من جدول المفضلات لو عندك
+        cartQuantity: cartItem ? cartItem.quantity : 0,
+      };
+    });
+
+    return {
+      ...offer.toObject(),
+      products: updatedProducts,
+    };
+  });
+
+  res.status(200).json({
+    results: updatedOffers.length,
+    data: updatedOffers,
+  });
 });
+
 
 exports.updateOffer = asyncHandler(async (req, res, next) => {
   const offer = await Offer.findById(req.params.id);

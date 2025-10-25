@@ -119,7 +119,6 @@ exports.deleteUser = asyncHandler(async (req, res, next) => {
 // -------------------- Logged User --------------------
 
 // Get Logged user profile
-// Get Logged user profile
 exports.getMyProfile = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user._id).populate("orders");
   if (!user) return next(new ApiError("User not found", 404));
@@ -132,11 +131,11 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
   const bookings = await bookingModel.find({ user: req.user._id })
     .populate({
       path: "activity",
-      select: "name images"
+      select: "name images duration", // 🔹 أضفت duration هنا
     })
     .populate({
       path: "facility",
-      select: "name images"
+      select: "name images",
     })
     .sort({ createdAt: -1 });
 
@@ -149,10 +148,10 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
     subscriptionId: m.subscriptionId,
     planName: m.plan?.name,
     planType: m.plan?.type,
-    planDescription: m.plan?.description, // ✅ وصف العضوية
+    planDescription: m.plan?.description,
     status: m.status,
     priceAdvantage: m.plan?.priceAdvantage,
-     permissions: m.plan?.permissions || [],
+    permissions: m.plan?.permissions || [],
     startDate: m.startDate,
     expiresAt: m.expiresAt,
     createdAt: m.createdAt,
@@ -163,45 +162,60 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
     accessGranted: m.accessGranted || null,
   }));
 
-  // 🧩 تجهيز آخر الأنشطة (آخر 5 مثلاً)
-  const recentActivities = bookings.slice(0, 5).map((b) => ({
-    id: b._id,
-    date: b.date,
-    timeSlot: b.timeSlot,
-    price: b.price,
-    status: b.status,
-    activity: b.activity
-      ? {
-          id: b.activity._id,
-          name: b.activity.name,
-          images: b.activity.images || [],
-        }
-      : null,
-    facility: b.facility
-      ? {
-          id: b.facility._id,
-          name: b.facility.name,
-          images: b.facility.images || [],
-        }
-      : null,
-  }));
-
   // 🟢 إجمالي النقاط والزيارات
   const totalPoints = memberships.reduce((sum, m) => sum + (m.points || 0), 0);
   const totalVisits = memberships.reduce((sum, m) => sum + (m.visitsUsed || 0), 0);
 
+  // 🔹 الأنشطة المكتملة فقط
+  const completedBookings = bookings
+    .filter((b) => b.status === "completed")
+    .slice(0, 5); // آخر ٥ فقط
+
+  // 🔹 تجهيز بيانات الأنشطة المكتملة
+  const recentActivities = completedBookings.map((b) => {
+    const totalDuration = b.activity?.duration || 90; // 🔹 مدة النشاط (افتراضي 90 دقيقة)
+    const attended = b.attendedMinutes || totalDuration; // 🔹 عدد الدقايق اللي حضرها
+    const usagePercent = Math.min((attended / totalDuration) * 100, 100);
+
+    return {
+      id: b._id,
+      date: b.date,
+      timeSlot: b.timeSlot,
+      price: b.price,
+      status: b.status,
+      duration: `${totalDuration} دقيقة`, // 🔹 المدة
+      usagePercent: `${usagePercent.toFixed(1)}%`, // 🔹 النسبة
+      activity: b.activity
+        ? {
+            id: b.activity._id,
+            name: b.activity.name,
+            images: b.activity.images || [],
+          }
+        : null,
+      facility: b.facility
+        ? {
+            id: b.facility._id,
+            name: b.facility.name,
+            images: b.facility.images || [],
+          }
+        : null,
+    };
+  });
+
+  // ✅ نفس استجابتك الأصلية + إضافات usage و duration
   res.status(200).json({
     status: "success",
     data: {
       ...user.toObject(),
-      totalBookings,             // ✅ عدد كل الحجوزات
-      totalPoints,               // ✅ إجمالي النقاط
-      totalVisits,               // ✅ إجمالي الزيارات
-      memberships: formattedMemberships, // ✅ العضويات بالتفاصيل
-      recentActivities,          // ✅ آخر الأنشطة بالحالة
+      totalBookings,
+      totalPoints,
+      totalVisits,
+      memberships: formattedMemberships,
+      recentActivities, // 🔹 الأنشطة المكتملة فقط
     },
   });
 });
+
 
 
 

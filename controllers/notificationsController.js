@@ -17,3 +17,12 @@ exports.deleteNotification = asyncHandler(async (req, res) => {
   res.status(200).json({ message: "Notification deleted" });
 });
 
+// ✅ Check unread notifications
+exports.hasUnreadNotifications = asyncHandler(async (req, res) => {
+  const hasUnread = await Notification.exists({
+    user: req.user._id,
+    isRead: false,
+  });
+
+  res.status(200).json({ hasUnread: !!hasUnread });
+});

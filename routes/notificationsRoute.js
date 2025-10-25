@@ -6,5 +6,6 @@ const { protect, allowedTo } = require("../controllers/authController");
 router.get("/", protect, allowedTo("user"), controller.getMyNotifications);
 router.put("/mark-all", protect, allowedTo("user"), controller.markAllAsRead);
 router.delete("/:id", protect, allowedTo("user"), controller.deleteNotification);
+router.get("/check-unread", protect, allowedTo("user"), controller.hasUnreadNotifications);
 
 module.exports = router;

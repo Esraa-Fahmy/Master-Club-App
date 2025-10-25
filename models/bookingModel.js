@@ -9,6 +9,8 @@ const bookingSchema = new mongoose.Schema({
   slotId: { type: String }, // link to schedule slot id
   guests: { type: Number, default: 1 }, // عدد الأشخاص في الحجز
   specialRequest: { type: String, default: "" },
+  attendedMinutes: Number, // عدد الدقايق اللي حضرها
+
   status: { type: String, enum: ["pending", "confirmed", "cancelled", "completed"], default: "pending" },
   price: { type: Number, required: true },
   paymentStatus: { type: String, enum: ["unpaid", "paid", "refunded"], default: "unpaid" },

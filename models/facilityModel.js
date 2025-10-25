@@ -20,6 +20,7 @@ const facilitySchema = new mongoose.Schema(
     images: [String],
     location: String,
     openingHours: String,
+    price: { type: Number },
       benfites : [{
       type :String
     }],
