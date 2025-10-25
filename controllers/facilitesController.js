@@ -35,21 +35,31 @@ exports.resizeFacilityImages = asyncHandler(async (req, res, next) => {
 });
 
 exports.getFacilities = asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
+  const page = parseInt(req.query.page);
   const limit = parseInt(req.query.limit) || 10;
-  const skip = (page - 1) * limit;
 
   let filter = {};
   if (req.query.category) filter.category = req.query.category;
   if (req.query.search) filter.name = { $regex: req.query.search, $options: "i" };
 
-  // 🟢 نجيب كل الفاسيلتيز
-  const facilities = await Facility.find(filter)
-    .skip(skip)
-    .limit(limit)
+  let facilitiesQuery = Facility.find(filter)
     .populate("category", "name type")
     .populate("allowedPlans", "_id name");
 
+  // 🟢 latest أو pagination
+  if (req.query.latest === "true") {
+    // ✅ latest = true → رجع آخر limit فاسيلتيز
+    facilitiesQuery = facilitiesQuery.sort({ createdAt: -1 }).limit(limit);
+  } else if (page) {
+    // ✅ لو فيه page → pagination
+    const skip = (page - 1) * limit;
+    facilitiesQuery = facilitiesQuery.skip(skip).limit(limit);
+  } else {
+    // ✅ الافتراضي: أول limit فاسيلتيز
+    facilitiesQuery = facilitiesQuery.limit(limit);
+  }
+
+  const facilities = await facilitiesQuery;
   const totalFacilities = await Facility.countDocuments(filter);
   const totalPages = Math.ceil(totalFacilities / limit);
 
@@ -64,15 +74,15 @@ exports.getFacilities = asyncHandler(async (req, res) => {
       results: adminFacilities.length,
       totalFacilities,
       totalPages,
-      currentPage: page,
-      hasNextPage: page < totalPages,
-      hasPrevPage: page > 1,
+      currentPage: page || 1,
+      hasNextPage: page ? page < totalPages : false,
+      hasPrevPage: page ? page > 1 : false,
       userPlan: "admin",
       data: adminFacilities,
     });
   }
 
-  // 🧩 نجيب عضوية المستخدم (لو موجودة)
+  // 🧩 نجيب عضوية المستخدم
   const subscription = await SubscripeMembership.findOne({
     user: req.user._id,
     status: "active",
@@ -80,27 +90,20 @@ exports.getFacilities = asyncHandler(async (req, res) => {
 
   const userPlanName = subscription?.plan?.name?.toLowerCase() || null;
 
-  // 🟢 كل المستخدمين يشوفوا كل الفاسيلتيز
   const facilitiesWithAccess = facilities.map(f => {
     const isVIPFacility = f.allowedPlans.some(p => p.name.toLowerCase() === "vip");
-
     let canBook = false;
 
     if (userPlanName === "vip") {
-      // مستخدم VIP → يقدر يحجز الكل
       canBook = true;
     } else if (userPlanName === "general" && !isVIPFacility) {
-      // General → يقدر يحجز العام فقط
       canBook = true;
     }
 
-    return {
-      ...f.toObject(),
-      canBook,
-    };
+    return { ...f.toObject(), canBook };
   });
 
-  // 🟢 فلترة حسب النوع لو طلبت (vip / general)
+  // 🟢 فلترة حسب النوع لو طلبت
   let filteredData = facilitiesWithAccess;
   if (req.query.mode === "vip") {
     filteredData = filteredData.filter(f =>
@@ -117,13 +120,14 @@ exports.getFacilities = asyncHandler(async (req, res) => {
     results: filteredData.length,
     totalFacilities,
     totalPages,
-    currentPage: page,
-    hasNextPage: page < totalPages,
-    hasPrevPage: page > 1,
+    currentPage: page || 1,
+    hasNextPage: page ? page < totalPages : false,
+    hasPrevPage: page ? page > 1 : false,
     userPlan: userPlanName || "none",
     data: filteredData,
-  });
+  });
 });
+
 
 // ✅ Get single facility
 exports.getFacility = asyncHandler(async (req, res, next) => {
