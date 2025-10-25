@@ -108,11 +108,12 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
 // ✅ جلب أوردرات + حجوزات المستخدم
 exports.getUserOrders = asyncHandler(async (req, res) => {
   const { status } = req.query;
-  const filter = { user: req.user._id };
-  if (status) filter.status = status;
 
-  // 🔹 جلب الأوردرات
-  const orders = await Order.find(filter)
+  // 🔹 فلترة الأوردرات
+  const orderFilter = { user: req.user._id };
+  if (status) orderFilter.status = status;
+
+  const orders = await Order.find(orderFilter)
     .populate({
       path: "items.product",
       select: "name price coverImage description category",
@@ -150,8 +151,11 @@ exports.getUserOrders = asyncHandler(async (req, res) => {
     })),
   }));
 
-  // 🔹 جلب الحجوزات
-  const bookings = await bookingModel.find({ user: req.user._id })
+  // 🔹 فلترة الحجوزات
+  const bookingFilter = { user: req.user._id };
+  if (status && status !== "delivered") bookingFilter.status = status;
+
+  const bookings = await bookingModel.find(bookingFilter)
     .populate({
       path: "facility",
       select: "name price duration images",
@@ -166,7 +170,6 @@ exports.getUserOrders = asyncHandler(async (req, res) => {
     const type = b.facility ? "facility" : "activity";
     const target = b.facility || b.activity;
 
-    // ✅ حساب الاستخدام (usage) إن وجد
     const totalDuration = target?.duration || 0;
     const usedDuration = b.usageDuration || 0;
     const usagePercent = totalDuration
@@ -187,13 +190,13 @@ exports.getUserOrders = asyncHandler(async (req, res) => {
     };
   });
 
-  // ✅ إرسال الريسبونس النهائي
   res.status(200).json({
     status: "success",
     orders: formattedOrders,
     bookings: formattedBookings,
   });
 });
+
 
 // ✅ تحديث حالة الأوردر (للأدمن)
 exports.updateOrderStatus = asyncHandler(async (req, res, next) => {
