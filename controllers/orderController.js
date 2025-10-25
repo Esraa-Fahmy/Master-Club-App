@@ -6,6 +6,7 @@ const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
 const cartModel = require("../models/cartModel");
 const offersModel = require("../models/offersModel");
+const bookingModel = require("../models/bookingModel");
 
 
 exports.createOrder = asyncHandler(async (req, res, next) => {
@@ -103,17 +104,95 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
 });
 
 
-// ✅ جلب أوردرات المستخدم
+
+// ✅ جلب أوردرات + حجوزات المستخدم
 exports.getUserOrders = asyncHandler(async (req, res) => {
   const { status } = req.query;
   const filter = { user: req.user._id };
   if (status) filter.status = status;
 
+  // 🔹 جلب الأوردرات
   const orders = await Order.find(filter)
-    .populate("items.product", "name price coverImage")
-    .sort("-createdAt");
+    .populate({
+      path: "items.product",
+      select: "name price coverImage description category",
+      populate: {
+        path: "category",
+        select: "name image",
+      },
+    })
+    .sort({ createdAt: -1 });
 
-  res.status(200).json({ results: orders.length, data: orders });
+  const formattedOrders = orders.map((order) => ({
+    id: order._id,
+    status: order.status,
+    createdAt: order.createdAt,
+    totalPrice: order.finalPrice,
+    items: order.items.map((item) => ({
+      id: item._id,
+      quantity: item.quantity,
+      price: item.price,
+      product: item.product
+        ? {
+            id: item.product._id,
+            name: item.product.name,
+            price: item.product.price,
+            image: item.product.coverImage,
+            category: item.product.category
+              ? {
+                  id: item.product.category._id,
+                  name: item.product.category.name,
+                  image: item.product.category.image,
+                }
+              : null,
+          }
+        : null,
+    })),
+  }));
+
+  // 🔹 جلب الحجوزات
+  const bookings = await bookingModel.find({ user: req.user._id })
+    .populate({
+      path: "facility",
+      select: "name price duration images",
+    })
+    .populate({
+      path: "activity",
+      select: "name price duration images",
+    })
+    .sort({ createdAt: -1 });
+
+  const formattedBookings = bookings.map((b) => {
+    const type = b.facility ? "facility" : "activity";
+    const target = b.facility || b.activity;
+
+    // ✅ حساب الاستخدام (usage) إن وجد
+    const totalDuration = target?.duration || 0;
+    const usedDuration = b.usageDuration || 0;
+    const usagePercent = totalDuration
+      ? Math.round((usedDuration / totalDuration) * 100)
+      : 0;
+
+    return {
+      id: b._id,
+      type,
+      status: b.status,
+      date: b.date,
+      duration: `${target?.duration || 0} دقيقة`,
+      totalPrice: b.totalPrice || target?.price || 0,
+      usagePercent,
+      name: target?.name || "",
+      image: target?.images?.[0] || null,
+      createdAt: b.createdAt,
+    };
+  });
+
+  // ✅ إرسال الريسبونس النهائي
+  res.status(200).json({
+    status: "success",
+    orders: formattedOrders,
+    bookings: formattedBookings,
+  });
 });
 
 // ✅ تحديث حالة الأوردر (للأدمن)
