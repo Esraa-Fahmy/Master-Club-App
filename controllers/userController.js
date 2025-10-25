@@ -130,7 +130,7 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
   const bookings = await bookingModel.find({ user: req.user._id })
     .populate({
       path: "activity",
-      select: "name images duration", // 🔹 أضفت duration هنا
+      select: "title images duration", // 🔹 أضفت duration هنا
     })
     .populate({
       path: "facility",
