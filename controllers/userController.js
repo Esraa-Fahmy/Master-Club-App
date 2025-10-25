@@ -18,24 +18,23 @@ exports.resizeImage = asyncHandler(async (req, res, next) => {
   const filename = `user-${uuidv4()}-${Date.now()}.jpeg`;
 
   if (req.file) {
-    const path = "uploads/users/";
-    if (!fs.existsSync(path)) {
-      fs.mkdirSync(path, { recursive: true });
-    }
+
+  const path = "uploads/users/";
+        if (!fs.existsSync(path)) {
+            fs.mkdirSync(path, { recursive: true });
+        }
 
     await sharp(req.file.buffer)
-      .toFormat("jpeg")
+      .toFormat('jpeg')
       .jpeg({ quality: 100 })
-      .toFile(`${path}${filename}`);
+      .toFile(`uploads/users/${filename}`);
 
-    // ✅ هنا هنستخدم الـ BASE_URL من .env
-    const fullUrl = `${process.env.BASE_URL}/uploads/users/${filename}`;
-    req.body.profileImg = fullUrl;
+    // Save image into our db
+    req.body.profileImg = filename;
   }
 
   next();
 });
-
 
 
 
