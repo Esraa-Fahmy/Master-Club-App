@@ -182,8 +182,8 @@ exports.getMyProfile = asyncHandler(async (req, res, next) => {
       timeSlot: b.timeSlot,
       price: b.price,
       status: b.status,
-      duration: `${totalDuration} دقيقة`, // 🔹 المدة
-      usagePercent: `${usagePercent.toFixed(1)}%`, // 🔹 النسبة
+      duration: b.totalDuration, // 🔹 المدة
+      usagePercent: `${usagePercent.toFixed(2)}%`, // 🔹 النسبة
       activity: b.activity
         ? {
             id: b.activity._id,
