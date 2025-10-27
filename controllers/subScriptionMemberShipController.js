@@ -373,11 +373,13 @@ exports.refreshQr = asyncHandler(async (req, res, next) => {
 
 exports.scanQr = asyncHandler(async (req, res, next) => {
   const { qrToken } = req.body;
-  if (!qrToken) return next(new ApiError("QR token is required", 400));
+  if (!qrToken) 
+    return res.status(200).json({ status: "failed", accessGranted: false, reason: "QR token is required" });
 
   const decoded = verifyQrToken(qrToken);
   if (!decoded)
     return res.status(200).json({
+      status: "failed",
       accessGranted: false,
       reason: "invalid_or_expired_qr",
     });
@@ -387,43 +389,28 @@ exports.scanQr = asyncHandler(async (req, res, next) => {
   );
   if (!sub) return next(new ApiError("Subscription not found", 404));
 
-  // ❌ الاشتراك مش مفعل
   if (sub.status !== "active") {
-    await sendNotification(
-      sub.user._id,
-      "فشل في الدخول",
-      "الاشتراك غير مفعل حاليًا.",
-      "membership"
-    );
+    await sendNotification(sub.user._id, "فشل في الدخول", "الاشتراك غير مفعل حاليًا.", "membership");
     return res.status(200).json({
+      status: "failed",
       accessGranted: false,
       reason: "subscription_not_active",
     });
   }
 
-  // ❌ الاشتراك منتهي
   if (sub.expiresAt && Date.now() > new Date(sub.expiresAt)) {
-    await sendNotification(
-      sub.user._id,
-      "انتهاء الاشتراك",
-      "محاولة دخول فاشلة: الاشتراك منتهي الصلاحية.",
-      "membership"
-    );
+    await sendNotification(sub.user._id, "انتهاء الاشتراك", "محاولة دخول فاشلة: الاشتراك منتهي الصلاحية.", "membership");
     return res.status(200).json({
+      status: "failed",
       accessGranted: false,
       reason: "subscription_expired",
     });
   }
 
-  // ❌ QR منتهي
   if (!sub.qrCodeExpiresAt || Date.now() > new Date(sub.qrCodeExpiresAt)) {
-    await sendNotification(
-      sub.user._id,
-      "رمز QR منتهي",
-      "محاولة دخول فاشلة: رمز الدخول منتهي الصلاحية.",
-      "membership"
-    );
+    await sendNotification(sub.user._id, "رمز QR منتهي", "محاولة دخول فاشلة: رمز الدخول منتهي الصلاحية.", "membership");
     return res.status(200).json({
+      status: "failed",
       accessGranted: false,
       reason: "qr_expired",
     });
@@ -435,14 +422,10 @@ exports.scanQr = asyncHandler(async (req, res, next) => {
   sub.points = (sub.points || 0) + 10;
   await sub.save();
 
-  await sendNotification(
-    sub.user._id,
-    "تم تأكيد الدخول",
-   ` تم مسح الكود بنجاح لخطة ${sub.plan?.name}`,
-    "membership"
-  );
+  await sendNotification(sub.user._id, "تم تأكيد الدخول", `تم مسح الكود بنجاح لخطة ${sub.plan?.name}`, "membership");
 
   return res.status(200).json({
+    status: "success",
     accessGranted: true,
     message: "Access granted",
     user: {
@@ -457,8 +440,8 @@ exports.scanQr = asyncHandler(async (req, res, next) => {
       expiresAt: sub.expiresAt,
       visitsUsed: sub.visitsUsed,
       points: sub.points,
-    },
-  });
+    },
+  });
 });
 
 
