@@ -19,10 +19,12 @@ exports.deleteNotification = asyncHandler(async (req, res) => {
 
 // ✅ Check unread notifications
 exports.hasUnreadNotifications = asyncHandler(async (req, res) => {
-  const hasUnread = await Notification.exists({
+  const unreadCount = await Notification.countDocuments({
     user: req.user._id,
     isRead: false,
   });
 
-  res.status(200).json({ hasUnread: !!hasUnread });
+  res.status(200).json({ unreadCount: unreadCount > 0,
+    count : unreadCount,
+   });
 });

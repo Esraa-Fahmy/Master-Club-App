@@ -7,7 +7,7 @@ const ApiError = require("../utils/apiError");
 const cartModel = require("../models/cartModel");
 const offersModel = require("../models/offersModel");
 const bookingModel = require("../models/bookingModel");
-
+const { sendNotification } = require("../utils/notifyUser");
 
 exports.createOrder = asyncHandler(async (req, res, next) => {
   const { shippingAddress, paymentMethod, couponCode } = req.body;
@@ -93,12 +93,23 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
     finalPrice,
   });
 
+
   // مسح الكارت بعد إنشاء الأوردر
   cart.items = [];
   cart.totalPrice = 0;
   cart.discount = 0;
   cart.finalPrice = 0;
   await cart.save();
+
+
+
+    // 🔔 إرسال إشعار للمستخدم
+  await sendNotification(
+    req.user._id,
+    "تم إنشاء الطلب بنجاح",
+    `تم إنشاء طلبك رقم ${order._id} بنجاح، بإجمالي ${order.finalPrice} جنيه.`,
+    "order"
+  );
 
   res.status(201).json({ status: "success", data: order });
 });
@@ -210,5 +221,15 @@ exports.updateOrderStatus = asyncHandler(async (req, res, next) => {
   if (req.body.status === "completed") order.completedAt = new Date();
 
   await order.save();
+
+
+
+   await sendNotification(
+    order.user._id,
+    "تحديث حالة الطلب",
+    `تم تحديث حالة طلبك إلى: ${order.status}`,
+    "order"
+  );
+  
   res.status(200).json({ data: order });
 });
