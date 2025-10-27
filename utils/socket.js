@@ -1,4 +1,5 @@
-// socket.js
+const jwt = require("jsonwebtoken");
+
 let ioInstance;
 const onlineUsers = new Map();
 
@@ -11,9 +12,18 @@ function initSocket(server) {
   ioInstance.on("connection", (socket) => {
     console.log("🔌 User connected:", socket.id);
 
-    socket.on("register", (userId) => {
-      onlineUsers.set(userId, socket.id);
-      console.log(`✅ Registered user ${userId} to socket ${socket.id}`);
+    // ✅ التسجيل باستخدام التوكن بدل userId مباشرة
+    socket.on("register", (data) => {
+      try {
+        const decoded = jwt.verify(data.token, process.env.JWT_SECRET_KEY);
+        const userId = decoded.id || decoded.userId;
+        if (userId) {
+          onlineUsers.set(userId.toString(), socket.id);
+          console.log(`✅ Registered user ${userId} to socket ${socket.id}`);
+        }
+      } catch (err) {
+        console.log("❌ Invalid token during socket register");
+      }
     });
 
     socket.on("disconnect", () => {
@@ -35,4 +45,4 @@ function getOnlineUsers() {
   return onlineUsers;
 }
 
-module.exports = { initSocket, getIo, getOnlineUsers };
+module.exports = { initSocket, getIo, getOnlineUsers };
